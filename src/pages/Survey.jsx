@@ -18,7 +18,7 @@ import { editorConfig } from "../data/editorConfig";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $generateHtmlFromNodes } from "@lexical/html";
 import { CLEAR_EDITOR_COMMAND } from "lexical";
-import { Link } from "react-router-dom";
+import { Link } from "umi";
 import RichEditor from "../components/LexicalEditor/RichEditor";
 import axios from "axios";
 import { questions } from "../data/surveyQuestions";

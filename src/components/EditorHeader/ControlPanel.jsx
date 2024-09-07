@@ -10,7 +10,7 @@ import {
   IconRedo,
   IconEdit,
 } from "@douyinfe/semi-icons";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "umi";
 import icon from "../../assets/icon_dark_64.png";
 import {
   Button,

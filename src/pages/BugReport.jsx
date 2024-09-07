@@ -15,7 +15,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { $generateHtmlFromNodes } from "@lexical/html";
 import { CLEAR_EDITOR_COMMAND } from "lexical";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link } from "umi";
 
 function Form({ theme }) {
   const [editor] = useLexicalComposerContext();

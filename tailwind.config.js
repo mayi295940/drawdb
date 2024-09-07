@@ -1,19 +1,10 @@
-/** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
+    './src/pages/**/*.jsx',
+    './src/components/**/*.jsx',
+    './src/layouts/**/*.jsx',
+    './src/pages/**/*.tsx',
+    './src/components/**/*.tsx',
+    './src/layouts/**/*.tsx',
   ],
-  theme: {
-    screens: {
-      '3xl': {'max': '2047px'},
-      '2xl': {'max': '1535px'},
-      'xl': {'min': '1024px'},
-      'lg': {'max': '1023px'},
-      'md': {'max': '820px'},
-      'sm': {'max': '639px'}
-    },
-    extend: {}
-  },
-  plugins: [],
-}
-
+};
