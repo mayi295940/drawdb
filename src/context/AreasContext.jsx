@@ -33,6 +33,7 @@ export default function AreasContextProvider({ children }) {
           width,
           height,
           color: defaultBlue,
+          locked: false,
         },
       ]);
     }
@@ -92,7 +93,14 @@ export default function AreasContextProvider({ children }) {
 
   return (
     <AreasContext.Provider
-      value={{ areas, setAreas, updateArea, addArea, deleteArea }}
+      value={{
+        areas,
+        setAreas,
+        updateArea,
+        addArea,
+        deleteArea,
+        areasCount: areas.length,
+      }}
     >
       {children}
     </AreasContext.Provider>

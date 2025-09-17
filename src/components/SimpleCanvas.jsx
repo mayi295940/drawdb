@@ -117,11 +117,12 @@ function Relationship({ relationship, tables }) {
   }
 
   return (
-    <g className="select-none" onClick={() => console.log(pathRef.current)}>
+    <g className="select-none">
       <path
         ref={pathRef}
         d={calcPath({
-          ...relationship,
+          startFieldIndex: relationship.startFieldId,
+          endFieldIndex: relationship.endFieldId,
           startTable: {
             x: tables[relationship.startTableId].x,
             y: tables[relationship.startTableId].y,

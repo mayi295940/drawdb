@@ -8,6 +8,7 @@ const hu = {
   translation: {
     report_bug: "Hiba jelentése",
     import: "Importálás",
+    import_from: "Importálás innen",
     file: "Fájl",
     new: "Új",
     new_window: "Új ablak",
@@ -48,6 +49,8 @@ const hu = {
     field_details: "Mezők részletei",
     reset_view: "Nézet alaphelyzetbe",
     show_grid: "Rács",
+    snap_to_grid: "Rácshoz igazítás",
+    show_datatype: "Adattípus",
     show_cardinality: "Kardinalitás",
     theme: "Téma",
     light: "Világos",
@@ -97,9 +100,11 @@ const hu = {
     no_tables: "Nincs tábla",
     no_tables_text: "Vágjon bele diagramja elkészítésébe!",
     no_relationships: "Nincs kapcsolat létrehozva",
-    no_relationships_text: "Egérhúzással összeköthet mezőket kapcsolatok létrehozásához",
+    no_relationships_text:
+      "Egérhúzással összeköthet mezőket kapcsolatok létrehozásához",
     no_subject_areas: "Nincs terület hozzáadva",
-    no_subject_areas_text: "Adjon hozzá területeket a táblák csoportosításához!",
+    no_subject_areas_text:
+      "Adjon hozzá területeket a táblák csoportosításához!",
     no_notes: "Nincs jegyzet",
     no_notes_text: "Használjon jegyzeteket további információk feljegyzéséhez",
     no_types: "Nincs típus",
@@ -111,12 +116,14 @@ const hu = {
     type: "Típus",
     null: "Null",
     not_null: "Nem null",
+    nullable: "Nullázható",
     primary: "Elsődleges",
     unique: "Egyedi",
     autoincrement: "Automatikus növelés",
     default_value: "Alapért.",
     check: "'Check' kifejezés",
-    this_will_appear_as_is: "*Ez a generált parancsfájlban ugyanígy fog megjelenni.",
+    this_will_appear_as_is:
+      "*Ez a generált parancsfájlban ugyanígy fog megjelenni.",
     comment: "Megjegyzés",
     add_field: "Új mező",
     values: "Értékek",
@@ -145,7 +152,8 @@ const hu = {
     note_deleted: "A jegyzet törölve",
     relationship_deleted: "A kapcsolat törölve",
     type_deleted: "A típus törölve",
-    cannot_connect: "A kapcsolatot nem lehet létrehozni, az oszlopok eltérő típusúak",
+    cannot_connect:
+      "A kapcsolatot nem lehet létrehozni, az oszlopok eltérő típusúak",
     copied_to_clipboard: "Másolva a vágólapra",
     create_new_diagram: "Új diagram létrehozása",
     cancel: "Mégse",
@@ -156,19 +164,21 @@ const hu = {
     create: "Létrehozás",
     confirm: "Megerősítés",
     last_modified: "Utoljára módosítva",
-    drag_and_drop_files: "Húzzon ide egy fájlt vagy kattintson a feltöltendő fájl kiválasztásához.",
-    support_json_and_ddb: "JSON és DDB fájlok támogatottak",
+    drag_and_drop_files:
+      "Húzzon ide egy fájlt vagy kattintson a feltöltendő fájl kiválasztásához.",
     upload_sql_to_generate_diagrams:
       "Töltsön fel egy sql fájlt a táblák és oszlopok automatikus generálásához.",
     overwrite_existing_diagram: "Meglévő diagram felülírása",
-    only_mysql_supported:
-      "*Jelenleg csak MySQL fájlok betöltése támogatott.",
+    only_mysql_supported: "*Jelenleg csak MySQL fájlok betöltése támogatott.",
     blank: "Üres",
     filename: "Fájlnév",
     table_w_no_name: "Nincs megadva név egy táblának",
-    duplicate_table_by_name: "Több tábla is létezik ezzel a névvel: '{{tableName}}'",
-    empty_field_name: "Nincs megadva egy mező `neve` a(z) '{{tableName}}' táblában",
-    empty_field_type: "Nincs megadva egy mező `típusa` a(z) '{{tableName}}' táblában",
+    duplicate_table_by_name:
+      "Több tábla is létezik ezzel a névvel: '{{tableName}}'",
+    empty_field_name:
+      "Nincs megadva egy mező `neve` a(z) '{{tableName}}' táblában",
+    empty_field_type:
+      "Nincs megadva egy mező `típusa` a(z) '{{tableName}}' táblában",
     no_values_for_field:
       "A(z) '{{tableName}}' tábla '{{fieldName}}' mezője `{{type}}` típusú, de nincs megadva érték",
     default_doesnt_match_type:
@@ -179,8 +189,10 @@ const hu = {
       "Több '{{fieldName}}' nevű mező is létezik a(z) '{{tableName}}' táblában",
     duplicate_index:
       "Több '{{indexName}}' nevű index is létezik a(z) '{{tableName}}' táblában",
-    empty_index: "A(z) '{{tableName}}' táblában levő index egyetlen oszlopot sem indexel",
-    no_primary_key: "A(z) '{{tableName}}' tábla nem rendelkezik elsődleges kulccsal",
+    empty_index:
+      "A(z) '{{tableName}}' táblában levő index egyetlen oszlopot sem indexel",
+    no_primary_key:
+      "A(z) '{{tableName}}' tábla nem rendelkezik elsődleges kulccsal",
     type_with_no_name: "Nincs megadva egy egyedi típus neve",
     duplicate_types: "Több típus is létezik a(z) '{{typeName}}' névvel",
     type_w_no_fields: "Nincs megadva mező a(z) '{{typeName}}' típusnak",
@@ -191,7 +203,8 @@ const hu = {
     duplicate_type_fields:
       "Több '{{fieldName}}' nevű mező is létezik a(z) '{{typeName}}' típussal",
     duplicate_reference: "Több hivatkozás is létezik a(z) '{{refName}}' névvel",
-    circular_dependency: "Körkörös hivatkozás a(z) '{{refName}}' táblával kapcsolatban",
+    circular_dependency:
+      "Körkörös hivatkozás a(z) '{{refName}}' táblával kapcsolatban",
     timeline: "Előzmények",
     priority: "Prioritás",
     none: "Nincs",
@@ -233,9 +246,26 @@ const hu = {
     no_enums: "Nincs enum",
     no_enums_text: "Itt adhat meg enum-okat",
     declare_array: "Tömb megadása",
-    empty_index_name: "A(z) '{{tableName}}' táblában egy indexnek nincs megadva név",
+    empty_index_name:
+      "A(z) '{{tableName}}' táblában egy indexnek nincs megadva név",
     didnt_find_diagram: "Hoppá! A diagram nem található.",
     unsigned: "Előjel nélküli",
+    share: "Megosztás",
+    unshare: "Megosztás megszüntetése",
+    copy_link: "Hivatkozás másolása",
+    readme: "OLVASS_EL",
+    failed_to_load:
+      "A betöltés sikertelen. Ellenőrizze a hivatkozás helyességét!",
+    share_info:
+      "* Ezen hivatkozás megosztása nem fog létrehozni élő, valósidejű együttműködési munkamenetet.",
+    show_relationship_labels: "Kapcsolatcímkék",
+    docs: "Dokumentáció",
+    supported_types: "Támogatott fájltípusok:",
+    bulk_update: "Csoportos frissítés",
+    multiselect: "Csoportos kijelölés",
+    export_saved_data: "Mentett adatok exportálása",
+    dbml_view: "DBML nézet",
+    tab_view: "Lap nézet",
   },
 };
 

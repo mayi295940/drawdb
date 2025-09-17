@@ -30,6 +30,7 @@ export default function NotesContextProvider({ children }) {
           y: transform.pan.y - height / 2,
           title: `note_${prev.length}`,
           content: "",
+          locked: false,
           color: defaultNoteTheme,
           height,
         },
@@ -91,7 +92,14 @@ export default function NotesContextProvider({ children }) {
 
   return (
     <NotesContext.Provider
-      value={{ notes, setNotes, updateNote, addNote, deleteNote }}
+      value={{
+        notes,
+        setNotes,
+        updateNote,
+        addNote,
+        deleteNote,
+        notesCount: notes.length,
+      }}
     >
       {children}
     </NotesContext.Provider>

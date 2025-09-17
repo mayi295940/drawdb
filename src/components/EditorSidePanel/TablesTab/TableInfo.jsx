@@ -1,41 +1,94 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Collapse,
   Input,
   TextArea,
   Button,
   Card,
-  Popover,
+  Select,
 } from "@douyinfe/semi-ui";
+import ColorPicker from "../ColorPicker";
 import { IconDeleteStroked } from "@douyinfe/semi-icons";
-import { useDiagram, useUndoRedo } from "../../../hooks";
-import { Action, ObjectType, defaultBlue } from "../../../data/constants";
-import ColorPalette from "../../ColorPicker";
+import {
+  useDiagram,
+  useLayout,
+  useSaveState,
+  useUndoRedo,
+} from "../../../hooks";
+import { Action, ObjectType, State, DB } from "../../../data/constants";
 import TableField from "./TableField";
 import IndexDetails from "./IndexDetails";
 import { useTranslation } from "react-i18next";
+import { SortableList } from "../../SortableList/SortableList";
+import { nanoid } from "nanoid";
 
 export default function TableInfo({ data }) {
+  const { tables, database } = useDiagram();
   const { t } = useTranslation();
   const [indexActiveKey, setIndexActiveKey] = useState("");
-  const { deleteTable, updateTable, updateField, setRelationships } =
-    useDiagram();
+  const { layout } = useLayout();
+  const { deleteTable, updateTable, setTables } = useDiagram();
   const { setUndoStack, setRedoStack } = useUndoRedo();
+  const { setSaveState } = useSaveState();
   const [editField, setEditField] = useState({});
-  const [drag, setDrag] = useState({
-    draggingElementIndex: null,
-    draggingOverIndexList: [],
-  });
+  const initialColorRef = useRef(data.color);
+
+  const handleColorPick = (color) => {
+    setUndoStack((prev) => {
+      let undoColor = initialColorRef.current;
+      const lastColorChange = prev.findLast(
+        (e) =>
+          e.element === ObjectType.TABLE &&
+          e.tid === data.id &&
+          e.action === Action.EDIT &&
+          e.redo?.color,
+      );
+      if (lastColorChange) {
+        undoColor = lastColorChange.redo.color;
+      }
+
+      if (color === undoColor) return prev;
+
+      const newStack = [
+        ...prev,
+        {
+          action: Action.EDIT,
+          element: ObjectType.TABLE,
+          component: "self",
+          tid: data.id,
+          undo: { color: undoColor },
+          redo: { color: color },
+          message: t("edit_table", {
+            tableName: data.name,
+            extra: "[color]",
+          }),
+        },
+      ];
+      return newStack;
+    });
+    setRedoStack([]);
+  };
+
+  const inheritedFieldNames =
+    Array.isArray(data.inherits) && data.inherits.length > 0
+      ? data.inherits
+          .map((parentName) => {
+            const parent = tables.find((t) => t.name === parentName);
+            return parent ? parent.fields.map((f) => f.name) : [];
+          })
+          .flat()
+      : [];
 
   return (
     <div>
       <div className="flex items-center mb-2.5">
-        <div className="text-md font-semibold break-keep">{t("name")}: </div>
+        <div className="text-md font-semibold break-keep">{t("name")}:</div>
         <Input
           value={data.name}
           validateStatus={data.name.trim() === "" ? "error" : "default"}
           placeholder={t("name")}
           className="ms-2"
+          readonly={layout.readOnly}
           onChange={(value) => updateTable(data.id, { name: value })}
           onFocus={(e) => setEditField({ name: e.target.value })}
           onBlur={(e) => {
@@ -59,86 +112,66 @@ export default function TableInfo({ data }) {
           }}
         />
       </div>
-      {data.fields.map((f, j) => (
-        <div
-          key={"field_" + j}
-          className={`cursor-pointer ${drag.draggingOverIndexList.includes(j) ? "opacity-25" : ""}`}
-          style={{ direction: "ltr" }}
-          draggable
-          onDragStart={() => {
-            setDrag((prev) => ({ ...prev, draggingElementIndex: j }));
-          }}
-          onDragLeave={() => {
-            setDrag((prev) => ({
-              ...prev,
-              draggingOverIndexList: prev.draggingOverIndexList.filter(
-                (index) => index !== j,
-              ),
-            }));
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (drag.draggingElementIndex != null) {
-              if (j !== drag.draggingElementIndex) {
-                setDrag((prev) => {
-                  if (prev.draggingOverIndexList.includes(j)) {
-                    return prev;
-                  }
 
-                  return {
-                    ...prev,
-                    draggingOverIndexList: prev.draggingOverIndexList.concat(j),
-                  };
-                });
-              }
+      <SortableList
+        items={data.fields}
+        keyPrefix={`table-${data.id}`}
+        onChange={(newFields) =>
+          setTables((prev) =>
+            prev.map((t) =>
+              t.id === data.id ? { ...t, fields: newFields } : t,
+            ),
+          )
+        }
+        afterChange={() => setSaveState(State.SAVING)}
+        renderItem={(item, i) => (
+          <TableField
+            data={item}
+            tid={data.id}
+            index={i}
+            inherited={inheritedFieldNames.includes(item.name)}
+          />
+        )}
+      />
 
-              return;
-            }
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            const index = drag.draggingElementIndex;
-            setDrag({ draggingElementIndex: null, draggingOverIndexList: [] });
-            if (index == null || index === j) {
-              return;
-            }
+      {database === DB.POSTGRES && (
+        <div className="mb-2">
+          <div className="text-md font-semibold break-keep">
+            {t("inherits")}:
+          </div>
+          <Select
+            multiple
+            value={data.inherits || []}
+            optionList={tables
+              .filter((t) => t.id !== data.id)
+              .map((t) => ({ label: t.name, value: t.name }))}
+            onChange={(value) => {
+              if (layout.readOnly) return;
 
-            const a = data.fields[index];
-            const b = data.fields[j];
-
-            updateField(data.id, index, { ...b, id: index });
-            updateField(data.id, j, { ...a, id: j });
-
-            setRelationships((prev) =>
-              prev.map((e) => {
-                if (e.startTableId === data.id) {
-                  if (e.startFieldId === index) {
-                    return { ...e, startFieldId: j };
-                  }
-                  if (e.startFieldId === j) {
-                    return { ...e, startFieldId: index };
-                  }
-                }
-                if (e.endTableId === data.id) {
-                  if (e.endFieldId === index) {
-                    return { ...e, endFieldId: j };
-                  }
-                  if (e.endFieldId === j) {
-                    return { ...e, endFieldId: index };
-                  }
-                }
-                return e;
-              }),
-            );
-          }}
-          onDragEnd={(e) => {
-            e.preventDefault();
-            setDrag({ draggingElementIndex: null, draggingOverIndexList: [] });
-          }}
-        >
-          <TableField data={f} tid={data.id} index={j} />
+              setUndoStack((prev) => [
+                ...prev,
+                {
+                  action: Action.EDIT,
+                  element: ObjectType.TABLE,
+                  component: "self",
+                  tid: data.id,
+                  undo: { inherits: data.inherits },
+                  redo: { inherits: value },
+                  message: t("edit_table", {
+                    tableName: data.name,
+                    extra: "[inherits]",
+                  }),
+                },
+              ]);
+              setRedoStack([]);
+              updateTable(data.id, { inherits: value });
+            }}
+            placeholder={t("inherits")}
+            className="w-full"
+          />
         </div>
-      ))}
+      )}
+
       {data.indices.length > 0 && (
         <Card
           bodyStyle={{ padding: "4px" }}
@@ -147,7 +180,7 @@ export default function TableInfo({ data }) {
         >
           <Collapse
             activeKey={indexActiveKey}
-            keepDOM
+            keepDOM={false}
             lazyRender
             onChange={(itemKey) => setIndexActiveKey(itemKey)}
             accordion
@@ -169,16 +202,18 @@ export default function TableInfo({ data }) {
           </Collapse>
         </Card>
       )}
+
       <Card
         bodyStyle={{ padding: "4px" }}
         style={{ marginTop: "12px", marginBottom: "12px" }}
         headerLine={false}
       >
-        <Collapse keepDOM lazyRender>
+        <Collapse keepDOM={false} lazyRender>
           <Collapse.Panel header={t("comment")} itemKey="1">
             <TextArea
               field="comment"
               value={data.comment}
+              readonly={layout.readOnly}
               autosize
               placeholder={t("comment")}
               rows={1}
@@ -209,67 +244,19 @@ export default function TableInfo({ data }) {
           </Collapse.Panel>
         </Collapse>
       </Card>
+
       <div className="flex justify-between items-center gap-1 mb-2">
-        <div>
-          <Popover
-            content={
-              <div className="popover-theme">
-                <ColorPalette
-                  currentColor={data.color}
-                  onClearColor={() => {
-                    setUndoStack((prev) => [
-                      ...prev,
-                      {
-                        action: Action.EDIT,
-                        element: ObjectType.TABLE,
-                        component: "self",
-                        tid: data.id,
-                        undo: { color: data.color },
-                        redo: { color: defaultBlue },
-                        message: t("edit_table", {
-                          tableName: data.name,
-                          extra: "[color]",
-                        }),
-                      },
-                    ]);
-                    setRedoStack([]);
-                    updateTable(data.id, { color: defaultBlue });
-                  }}
-                  onPickColor={(c) => {
-                    setUndoStack((prev) => [
-                      ...prev,
-                      {
-                        action: Action.EDIT,
-                        element: ObjectType.TABLE,
-                        component: "self",
-                        tid: data.id,
-                        undo: { color: data.color },
-                        redo: { color: c },
-                        message: t("edit_table", {
-                          tableName: data.name,
-                          extra: "[color]",
-                        }),
-                      },
-                    ]);
-                    setRedoStack([]);
-                    updateTable(data.id, { color: c });
-                  }}
-                />
-              </div>
-            }
-            trigger="click"
-            position="bottomLeft"
-            showArrow
-          >
-            <div
-              className="h-[32px] w-[32px] rounded"
-              style={{ backgroundColor: data.color }}
-            />
-          </Popover>
-        </div>
+        <ColorPicker
+          usePopover={true}
+          readOnly={layout.readOnly}
+          value={data.color}
+          onChange={(color) => updateTable(data.id, { color })}
+          onColorPick={(color) => handleColorPick(color)}
+        />
         <div className="flex gap-1">
           <Button
             block
+            disabled={layout.readOnly}
             onClick={() => {
               setIndexActiveKey("1");
               setUndoStack((prev) => [
@@ -302,7 +289,10 @@ export default function TableInfo({ data }) {
             {t("add_index")}
           </Button>
           <Button
+            block
+            disabled={layout.readOnly}
             onClick={() => {
+              const id = nanoid();
               setUndoStack((prev) => [
                 ...prev,
                 {
@@ -310,6 +300,7 @@ export default function TableInfo({ data }) {
                   element: ObjectType.TABLE,
                   component: "field_add",
                   tid: data.id,
+                  fid: id,
                   message: t("edit_table", {
                     tableName: data.name,
                     extra: "[add field]",
@@ -321,6 +312,7 @@ export default function TableInfo({ data }) {
                 fields: [
                   ...data.fields,
                   {
+                    id,
                     name: "",
                     type: "",
                     default: "",
@@ -330,18 +322,17 @@ export default function TableInfo({ data }) {
                     notNull: false,
                     increment: false,
                     comment: "",
-                    id: data.fields.length,
                   },
                 ],
               });
             }}
-            block
           >
             {t("add_field")}
           </Button>
           <Button
-            icon={<IconDeleteStroked />}
             type="danger"
+            disabled={layout.readOnly}
+            icon={<IconDeleteStroked />}
             onClick={() => deleteTable(data.id)}
           />
         </div>

@@ -2,18 +2,16 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import logo_light from "../assets/logo_light_160.png";
 import logo_dark from "../assets/logo_dark_160.png";
 import { Banner, Button, Input, Upload, Toast, Spin } from "@douyinfe/semi-ui";
-import {
-  IconSun,
-  IconMoon,
-  IconGithubLogo,
-  IconPaperclip,
-} from "@douyinfe/semi-icons";
+import { IconGithubLogo, IconPaperclip } from "@douyinfe/semi-icons";
 import RichEditor from "../components/LexicalEditor/RichEditor";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { editorConfig } from "../data/editorConfig";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $generateHtmlFromNodes } from "@lexical/html";
 import { CLEAR_EDITOR_COMMAND } from "lexical";
+import { socials } from "../data/socials";
+import { send } from "../api/email";
+import { useSettings, useThemedPage } from "../hooks";
 import axios from "axios";
 import { Link } from "umi";
 
@@ -64,21 +62,19 @@ function Form({ theme }) {
     setLoading(true);
     editor.update(() => {
       const sendMail = async () => {
-        await axios
-          .post(`${import.meta.env.VITE_BACKEND_URL}/send_email`, {
-            subject: `[BUG REPORT]: ${data.title}`,
-            message: $generateHtmlFromNodes(editor),
-            attachments: data.attachments,
-          })
-          .then(() => {
-            Toast.success("Bug reported!");
-            editor.dispatchCommand(CLEAR_EDITOR_COMMAND, null);
-            resetForm();
-          })
-          .catch(() => {
-            Toast.error("Oops! Something went wrong.");
-            setLoading(false);
-          });
+        try {
+          await send(
+            `[BUG REPORT]: ${data.title}`,
+            $generateHtmlFromNodes(editor),
+            data.attachments,
+          );
+          Toast.success("Bug reported!");
+          editor.dispatchCommand(CLEAR_EDITOR_COMMAND, null);
+          resetForm();
+        } catch {
+          Toast.error("Oops! Something went wrong.");
+          setLoading(false);
+        }
       };
       sendMail();
     });
@@ -91,7 +87,7 @@ function Form({ theme }) {
         value={data.title}
         onChange={(v) => setData((prev) => ({ ...prev, title: v }))}
       />
-      <RichEditor theme={theme} placeholder={"Describe the bug"} />
+      <RichEditor theme={theme} placeholder="Describe the bug" />
       <Upload
         action="#"
         ref={uploadRef}
@@ -109,12 +105,8 @@ function Form({ theme }) {
         dragSubText="Upload up to 3 images"
         accept="image/*"
         limit={3}
-      ></Upload>
-      <div className="pt-4 flex justify-between items-center">
-        <div className="text-sm opacity-80">
-          <i className="fa-brands fa-markdown me-1"></i>Styling with markdown is
-          supported
-        </div>
+      />
+      <div className="pt-4 flex justify-end items-center">
         <div className="flex items-center">
           <Button
             onClick={onSubmit}
@@ -133,29 +125,16 @@ function Form({ theme }) {
 }
 
 export default function BugReport() {
-  const [theme, setTheme] = useState("");
+  const {
+    settings: { mode: theme },
+  } = useSettings();
 
   useEffect(() => {
-    setTheme(localStorage.getItem("theme"));
     document.title = "Report a bug | drawDB";
     document.body.setAttribute("class", "theme");
-  }, [setTheme]);
+  }, []);
 
-  const changeTheme = () => {
-    const body = document.body;
-    const t = body.getAttribute("theme-mode");
-    if (t === "dark") {
-      if (body.hasAttribute("theme-mode")) {
-        body.setAttribute("theme-mode", "light");
-        setTheme("light");
-      }
-    } else {
-      if (body.hasAttribute("theme-mode")) {
-        body.setAttribute("theme-mode", "dark");
-        setTheme("dark");
-      }
-    }
-  };
+  useThemedPage();
 
   return (
     <>
@@ -165,25 +144,12 @@ export default function BugReport() {
             <img
               src={theme === "dark" ? logo_dark : logo_light}
               alt="logo"
-              className="me-2 sm:h-[28px] md:h-[46px] h-[48px]"
+              className="me-2 sm:h-[28px] h-[42px]"
             />
           </Link>
           <div className="ms-4 sm:text-sm xl:text-lg font-semibold">
             Report a bug
           </div>
-        </div>
-        <div className="flex items-center">
-          <Button
-            icon={
-              theme === "dark" ? (
-                <IconSun size="extra-large" />
-              ) : (
-                <IconMoon size="extra-large" />
-              )
-            }
-            theme="borderless"
-            onClick={changeTheme}
-          />
         </div>
       </div>
       <hr
@@ -233,13 +199,13 @@ export default function BugReport() {
               <hr
                 className={`${
                   theme === "dark" ? "border-zinc-700" : "border-zinc-300"
-                } flex-grow`}
+                } grow`}
               />
               <div className="text-sm font-semibold m-2">Alternatively</div>
               <hr
                 className={`${
                   theme === "dark" ? "border-zinc-700" : "border-zinc-300"
-                } flex-grow`}
+                } grow`}
               />
             </div>
             <Button
@@ -247,10 +213,7 @@ export default function BugReport() {
               icon={<IconGithubLogo />}
               style={{ backgroundColor: "#239144", color: "white" }}
               onClick={() => {
-                window.open(
-                  "https://github.com/drawdb-io/drawdb/issues",
-                  "_self",
-                );
+                window.open(`${socials.github}/issues`, "_self");
               }}
             >
               Add an issue

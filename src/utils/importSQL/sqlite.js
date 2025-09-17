@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { Cardinality, DB } from "../../data/constants";
 import { dbToTypes } from "../../data/datatypes";
 import { buildSQLFromAST } from "./shared";
@@ -23,7 +24,7 @@ const affinity = {
   ),
   [DB.GENERIC]: new Proxy(
     {
-      INT: "INTEGER",
+      INTEGER: "INT",
       TINYINT: "SMALLINT",
       MEDIUMINT: "INTEGER",
       INT2: "INTEGER",
@@ -40,7 +41,56 @@ export function fromSQLite(ast, diagramDb = DB.GENERIC) {
   const tables = [];
   const relationships = [];
 
-  ast.forEach((e) => {
+  const addRelationshipFromReferenceDef = (
+    startTable,
+    startFieldName,
+    referenceDefinition,
+  ) => {
+    const relationship = {};
+    const endTableName = referenceDefinition.table[0].table;
+    const endFieldName = referenceDefinition.definition[0].column;
+
+    const endTable = tables.find((t) => t.name === endTableName);
+    if (!endTable) return;
+
+    const endField = endTable.fields.find((f) => f.name === endFieldName);
+    if (!endField) return;
+
+    const startField = startTable.fields.find((f) => f.name === startFieldName);
+    if (!startField) return;
+
+    relationship.name =
+      "fk_" + startTable.name + "_" + startFieldName + "_" + endTableName;
+    relationship.startTableId = startTable.id;
+    relationship.endTableId = endTable.id;
+    relationship.endFieldId = endField.id;
+    relationship.startFieldId = startField.id;
+    let updateConstraint = "No action";
+    let deleteConstraint = "No action";
+    referenceDefinition.on_action.forEach((c) => {
+      if (c.type === "on update") {
+        updateConstraint = c.value.value;
+        updateConstraint =
+          updateConstraint[0].toUpperCase() + updateConstraint.substring(1);
+      } else if (c.type === "on delete") {
+        deleteConstraint = c.value.value;
+        deleteConstraint =
+          deleteConstraint[0].toUpperCase() + deleteConstraint.substring(1);
+      }
+    });
+
+    relationship.updateConstraint = updateConstraint;
+    relationship.deleteConstraint = deleteConstraint;
+
+    if (startField.unique) {
+      relationship.cardinality = Cardinality.ONE_TO_ONE;
+    } else {
+      relationship.cardinality = Cardinality.MANY_TO_ONE;
+    }
+    relationships.push(relationship);
+  };
+
+  const parseSingleStatement = (e) => {
     if (e.type === "create") {
       if (e.keyword === "table") {
         const table = {};
@@ -49,10 +99,11 @@ export function fromSQLite(ast, diagramDb = DB.GENERIC) {
         table.color = "#175e7a";
         table.fields = [];
         table.indices = [];
-        table.id = tables.length;
+        table.id = nanoid();
         e.create_definitions.forEach((d) => {
           if (d.resource === "column") {
             const field = {};
+            field.id = nanoid();
             field.name = d.column.column;
 
             let type = d.definition.dataType;
@@ -111,8 +162,15 @@ export function fromSQLite(ast, diagramDb = DB.GENERIC) {
             if (d.check) {
               field.check = buildSQLFromAST(d.check.definition[0], DB.SQLITE);
             }
-
             table.fields.push(field);
+
+            if (d.reference_definition) {
+              addRelationshipFromReferenceDef(
+                table,
+                field.name,
+                d.reference_definition,
+              );
+            }
           } else if (d.resource === "constraint") {
             if (d.constraint_type === "primary key") {
               d.definition.forEach((c) => {
@@ -122,86 +180,40 @@ export function fromSQLite(ast, diagramDb = DB.GENERIC) {
                   }
                 });
               });
-            } else if (d.constraint_type === "FOREIGN KEY") {
-              const relationship = {};
-              const startTableId = table.id;
-              const startTable = e.table[0].table;
-              const startField = d.definition[0].column;
-              const endTable = d.reference_definition.table[0].table;
-              const endField = d.reference_definition.definition[0].column;
-
-              const endTableId = tables.findIndex((t) => t.name === endTable);
-              if (endTableId === -1) return;
-
-              const endFieldId = tables[endTableId].fields.findIndex(
-                (f) => f.name === endField,
+            } else if (d.constraint_type.toLowerCase() === "foreign key") {
+              addRelationshipFromReferenceDef(
+                table,
+                d.definition[0].column,
+                d.reference_definition,
               );
-              if (endField === -1) return;
-
-              const startFieldId = table.fields.findIndex(
-                (f) => f.name === startField,
-              );
-              if (startFieldId === -1) return;
-
-              relationship.name = startTable + "_" + startField + "_fk";
-              relationship.startTableId = startTableId;
-              relationship.endTableId = endTableId;
-              relationship.endFieldId = endFieldId;
-              relationship.startFieldId = startFieldId;
-              let updateConstraint = "No action";
-              let deleteConstraint = "No action";
-              d.reference_definition.on_action.forEach((c) => {
-                if (c.type === "on update") {
-                  updateConstraint = c.value.value;
-                  updateConstraint =
-                    updateConstraint[0].toUpperCase() +
-                    updateConstraint.substring(1);
-                } else if (c.type === "on delete") {
-                  deleteConstraint = c.value.value;
-                  deleteConstraint =
-                    deleteConstraint[0].toUpperCase() +
-                    deleteConstraint.substring(1);
-                }
-              });
-
-              relationship.updateConstraint = updateConstraint;
-              relationship.deleteConstraint = deleteConstraint;
-
-              if (table.fields[startFieldId].unique) {
-                relationship.cardinality = Cardinality.ONE_TO_ONE;
-              } else {
-                relationship.cardinality = Cardinality.MANY_TO_ONE;
-              }
-
-              relationships.push(relationship);
             }
           }
         });
-        table.fields.forEach((f, j) => {
-          f.id = j;
-        });
         tables.push(table);
       } else if (e.keyword === "index") {
-        const index = {};
-        index.name = e.index;
-        index.unique = false;
-        if (e.index_type === "unique") index.unique = true;
-        index.fields = [];
-        e.index_columns.forEach((f) => index.fields.push(f.column));
+        const index = {
+          name: e.index,
+          unique: e.index_type === "unique",
+          fields: e.index_columns.map((f) => f.column),
+        };
 
-        let found = -1;
-        tables.forEach((t, i) => {
-          if (found !== -1) return;
-          if (t.name === e.table.table) {
-            t.indices.push(index);
-            found = i;
-          }
-        });
+        const table = tables.find((t) => t.name === e.table.table);
 
-        if (found !== -1) tables[found].indices.forEach((i, j) => (i.id = j));
+        if (table) {
+          table.indices.push(index);
+          table.indices.forEach((i, j) => {
+            i.id = j;
+          });
+        }
       }
     }
-  });
+  };
+
+  if (Array.isArray(ast)) {
+    ast.forEach((e) => parseSingleStatement(e));
+  } else {
+    parseSingleStatement(ast);
+  }
 
   relationships.forEach((r, i) => (r.id = i));
 

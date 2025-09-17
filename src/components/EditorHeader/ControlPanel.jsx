@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   IconCaretdown,
   IconChevronRight,
@@ -9,6 +9,7 @@ import {
   IconUndo,
   IconRedo,
   IconEdit,
+  IconShareStroked,
 } from "@douyinfe/semi-icons";
 import { Link, useNavigate } from "umi";
 import icon from "../../assets/icon_dark_64.png";
@@ -19,17 +20,18 @@ import {
   InputNumber,
   Tooltip,
   Spin,
+  Tag,
   Toast,
   Popconfirm,
 } from "@douyinfe/semi-ui";
 import { toPng, toJpeg, toSvg } from "html-to-image";
-import { saveAs } from "file-saver";
 import {
   jsonToMySQL,
   jsonToPostgreSQL,
   jsonToSQLite,
   jsonToMariaDB,
   jsonToSQLServer,
+  jsonToOracleSQL,
 } from "../../utils/exportSQL/generic";
 import {
   ObjectType,
@@ -39,6 +41,9 @@ import {
   MODAL,
   SIDESHEET,
   DB,
+  IMPORT_FROM,
+  noteWidth,
+  pngExportPixelRatio,
 } from "../../data/constants";
 import jsPDF from "jspdf";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -70,6 +75,14 @@ import { exportSQL } from "../../utils/exportSQL";
 import { databases } from "../../data/databases";
 import { jsonToMermaid } from "../../utils/exportAs/mermaid";
 import { isRtl } from "../../i18n/utils/rtl";
+import { jsonToDocumentation } from "../../utils/exportAs/documentation";
+import { IdContext } from "../Workspace";
+import { socials } from "../../data/socials";
+import { toDBML } from "../../utils/exportAs/dbml";
+import { exportSavedData } from "../../utils/exportSavedData";
+import { nanoid } from "nanoid";
+import { getTableHeight } from "../../utils/utils";
+import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
 
 export default function ControlPanel({
   diagramId,
@@ -87,6 +100,7 @@ export default function ControlPanel({
     filename: `${title}_${new Date().toISOString()}`,
     extension: "",
   });
+  const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
   const { settings, setSettings } = useSettings();
@@ -102,6 +116,7 @@ export default function ControlPanel({
     setRelationships,
     addRelationship,
     deleteRelationship,
+    updateRelationship,
     database,
   } = useDiagram();
   const { enums, setEnums, deleteEnum, addEnum, updateEnum } = useEnums();
@@ -112,6 +127,7 @@ export default function ControlPanel({
   const { selectedElement, setSelectedElement } = useSelect();
   const { transform, setTransform } = useTransform();
   const { t, i18n } = useTranslation();
+  const { version, gistId, setGistId } = useContext(IdContext);
   const navigate = useNavigate();
 
   const invertLayout = (component) =>
@@ -121,9 +137,24 @@ export default function ControlPanel({
     if (undoStack.length === 0) return;
     const a = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.filter((_, i) => i !== prev.length - 1));
+
+    if (a.bulk) {
+      for (const element of a.elements) {
+        if (element.type === ObjectType.TABLE) {
+          updateTable(element.id, element.undo);
+        } else if (element.type === ObjectType.AREA) {
+          updateArea(element.id, element.undo);
+        } else if (element.type === ObjectType.NOTE) {
+          updateNote(element.id, element.undo);
+        }
+      }
+      setRedoStack((prev) => [...prev, a]);
+      return;
+    }
+
     if (a.action === Action.ADD) {
       if (a.element === ObjectType.TABLE) {
-        deleteTable(tables[tables.length - 1].id, false);
+        deleteTable(a.id, false);
       } else if (a.element === ObjectType.AREA) {
         deleteArea(areas[areas.length - 1].id, false);
       } else if (a.element === ObjectType.NOTE) {
@@ -138,10 +169,8 @@ export default function ControlPanel({
       setRedoStack((prev) => [...prev, a]);
     } else if (a.action === Action.MOVE) {
       if (a.element === ObjectType.TABLE) {
-        setRedoStack((prev) => [
-          ...prev,
-          { ...a, x: tables[a.id].x, y: tables[a.id].y },
-        ]);
+        const { x, y } = tables.find((t) => t.id === a.id);
+        setRedoStack((prev) => [...prev, { ...a, x, y }]);
         updateTable(a.id, { x: a.x, y: a.y });
       } else if (a.element === ObjectType.AREA) {
         setRedoStack((prev) => [
@@ -178,6 +207,7 @@ export default function ControlPanel({
       } else if (a.element === ObjectType.NOTE) {
         updateNote(a.nid, a.undo);
       } else if (a.element === ObjectType.TABLE) {
+        const table = tables.find((t) => t.id === a.tid);
         if (a.component === "field") {
           updateField(a.tid, a.fid, a.undo);
         } else if (a.component === "field_delete") {
@@ -186,65 +216,24 @@ export default function ControlPanel({
             a.data.relationship.forEach((r) => {
               temp.splice(r.id, 0, r);
             });
-            temp = temp.map((e, i) => {
-              const recoveredRel = a.data.relationship.find(
-                (x) =>
-                  (x.startTableId === e.startTableId &&
-                    x.startFieldId === e.startFieldId) ||
-                  (x.endTableId === e.endTableId &&
-                    x.endFieldId === a.endFieldId),
-              );
-              if (
-                e.startTableId === a.tid &&
-                e.startFieldId >= a.data.field.id &&
-                !recoveredRel
-              ) {
-                return {
-                  ...e,
-                  id: i,
-                  startFieldId: e.startFieldId + 1,
-                };
-              }
-              if (
-                e.endTableId === a.tid &&
-                e.endFieldId >= a.data.field.id &&
-                !recoveredRel
-              ) {
-                return {
-                  ...e,
-                  id: i,
-                  endFieldId: e.endFieldId + 1,
-                };
-              }
-              return { ...e, id: i };
-            });
             return temp;
           });
-          setTables((prev) =>
-            prev.map((t) => {
-              if (t.id === a.tid) {
-                const temp = t.fields.slice();
-                temp.splice(a.data.field.id, 0, a.data.field);
-                return { ...t, fields: temp.map((t, i) => ({ ...t, id: i })) };
-              }
-              return t;
-            }),
-          );
+          const updatedFields = table.fields.slice();
+          updatedFields.splice(a.data.index, 0, a.data.field);
+          updateTable(a.tid, { fields: updatedFields });
         } else if (a.component === "field_add") {
           updateTable(a.tid, {
-            fields: tables[a.tid].fields
-              .filter((e) => e.id !== tables[a.tid].fields.length - 1)
-              .map((t, i) => ({ ...t, id: i })),
+            fields: table.fields.filter((e) => e.id !== a.fid),
           });
         } else if (a.component === "index_add") {
           updateTable(a.tid, {
-            indices: tables[a.tid].indices
-              .filter((e) => e.id !== tables[a.tid].indices.length - 1)
+            indices: table.indices
+              .filter((e) => e.id !== table.indices.length - 1)
               .map((t, i) => ({ ...t, id: i })),
           });
         } else if (a.component === "index") {
           updateTable(a.tid, {
-            indices: tables[a.tid].indices.map((index) =>
+            indices: table.indices.map((index) =>
               index.id === a.iid
                 ? {
                     ...index,
@@ -254,26 +243,16 @@ export default function ControlPanel({
             ),
           });
         } else if (a.component === "index_delete") {
-          setTables((prev) =>
-            prev.map((table) => {
-              if (table.id === a.tid) {
-                const temp = table.indices.slice();
-                temp.splice(a.data.id, 0, a.data);
-                return {
-                  ...table,
-                  indices: temp.map((t, i) => ({ ...t, id: i })),
-                };
-              }
-              return table;
-            }),
-          );
+          const updatedIndices = table.indices.slice();
+          updatedIndices.splice(a.data.id, 0, a.data);
+          updateTable(a.tid, {
+            indices: updatedIndices.map((t, i) => ({ ...t, id: i })),
+          });
         } else if (a.component === "self") {
           updateTable(a.tid, a.undo);
         }
       } else if (a.element === ObjectType.RELATIONSHIP) {
-        setRelationships((prev) =>
-          prev.map((e, idx) => (idx === a.rid ? { ...e, ...a.undo } : e)),
-        );
+        updateRelationship(a.rid, a.undo);
       } else if (a.element === ObjectType.TYPE) {
         if (a.component === "field_add") {
           updateType(a.tid, {
@@ -320,12 +299,6 @@ export default function ControlPanel({
         }
       }
       setRedoStack((prev) => [...prev, a]);
-    } else if (a.action === Action.PAN) {
-      setTransform((prev) => ({
-        ...prev,
-        pan: a.undo,
-      }));
-      setRedoStack((prev) => [...prev, a]);
     }
   };
 
@@ -333,6 +306,21 @@ export default function ControlPanel({
     if (redoStack.length === 0) return;
     const a = redoStack[redoStack.length - 1];
     setRedoStack((prev) => prev.filter((e, i) => i !== prev.length - 1));
+
+    if (a.bulk) {
+      for (const element of a.elements) {
+        if (element.type === ObjectType.TABLE) {
+          updateTable(element.id, element.redo);
+        } else if (element.type === ObjectType.AREA) {
+          updateArea(element.id, element.redo);
+        } else if (element.type === ObjectType.NOTE) {
+          updateNote(element.id, element.redo);
+        }
+      }
+      setUndoStack((prev) => [...prev, a]);
+      return;
+    }
+
     if (a.action === Action.ADD) {
       if (a.element === ObjectType.TABLE) {
         addTable(null, false);
@@ -350,10 +338,8 @@ export default function ControlPanel({
       setUndoStack((prev) => [...prev, a]);
     } else if (a.action === Action.MOVE) {
       if (a.element === ObjectType.TABLE) {
-        setUndoStack((prev) => [
-          ...prev,
-          { ...a, x: tables[a.id].x, y: tables[a.id].y },
-        ]);
+        const { x, y } = tables.find((t) => t.id == a.id);
+        setUndoStack((prev) => [...prev, { ...a, x, y }]);
         updateTable(a.id, { x: a.x, y: a.y });
       } else if (a.element === ObjectType.AREA) {
         setUndoStack((prev) => [
@@ -389,6 +375,7 @@ export default function ControlPanel({
       } else if (a.element === ObjectType.NOTE) {
         updateNote(a.nid, a.redo);
       } else if (a.element === ObjectType.TABLE) {
+        const table = tables.find((t) => t.id === a.tid);
         if (a.component === "field") {
           updateField(a.tid, a.fid, a.redo);
         } else if (a.component === "field_delete") {
@@ -396,7 +383,7 @@ export default function ControlPanel({
         } else if (a.component === "field_add") {
           updateTable(a.tid, {
             fields: [
-              ...tables[a.tid].fields,
+              ...table.fields,
               {
                 name: "",
                 type: "",
@@ -407,32 +394,24 @@ export default function ControlPanel({
                 notNull: false,
                 increment: false,
                 comment: "",
-                id: tables[a.tid].fields.length,
+                id: nanoid(),
               },
             ],
           });
         } else if (a.component === "index_add") {
-          setTables((prev) =>
-            prev.map((table) => {
-              if (table.id === a.tid) {
-                return {
-                  ...table,
-                  indices: [
-                    ...table.indices,
-                    {
-                      id: table.indices.length,
-                      name: `index_${table.indices.length}`,
-                      fields: [],
-                    },
-                  ],
-                };
-              }
-              return table;
-            }),
-          );
+          updateTable(a.tid, {
+            indices: [
+              ...table.indices,
+              {
+                id: table.indices.length,
+                name: `index_${table.indices.length}`,
+                fields: [],
+              },
+            ],
+          });
         } else if (a.component === "index") {
           updateTable(a.tid, {
-            indices: tables[a.tid].indices.map((index) =>
+            indices: table.indices.map((index) =>
               index.id === a.iid
                 ? {
                     ...index,
@@ -443,7 +422,7 @@ export default function ControlPanel({
           });
         } else if (a.component === "index_delete") {
           updateTable(a.tid, {
-            indices: tables[a.tid].indices
+            indices: table.indices
               .filter((e) => e.id !== a.data.id)
               .map((t, i) => ({ ...t, id: i })),
           });
@@ -451,9 +430,7 @@ export default function ControlPanel({
           updateTable(a.tid, a.redo, false);
         }
       } else if (a.element === ObjectType.RELATIONSHIP) {
-        setRelationships((prev) =>
-          prev.map((e, idx) => (idx === a.rid ? { ...e, ...a.redo } : e)),
-        );
+        updateRelationship(a.rid, a.redo);
       } else if (a.element === ObjectType.TYPE) {
         if (a.component === "field_add") {
           updateType(a.tid, {
@@ -496,18 +473,14 @@ export default function ControlPanel({
         }
       }
       setUndoStack((prev) => [...prev, a]);
-    } else if (a.action === Action.PAN) {
-      setTransform((prev) => ({
-        ...prev,
-        pan: a.redo,
-      }));
-      setUndoStack((prev) => [...prev, a]);
     }
   };
 
   const fileImport = () => setModal(MODAL.IMPORT);
   const viewGrid = () =>
     setSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }));
+  const snapToGrid = () =>
+    setSettings((prev) => ({ ...prev, snapToGrid: !prev.snapToGrid }));
   const zoomIn = () =>
     setTransform((prev) => ({ ...prev, zoom: prev.zoom * 1.2 }));
   const zoomOut = () =>
@@ -522,7 +495,9 @@ export default function ControlPanel({
     }));
   };
   const copyAsImage = () => {
-    toPng(document.getElementById("canvas")).then(function (dataUrl) {
+    toPng(document.getElementById("canvas"), {
+      pixelRatio: pngExportPixelRatio,
+    }).then(function (dataUrl) {
       const blob = dataURItoBlob(dataUrl);
       navigator.clipboard
         .write([new ClipboardItem({ "image/png": blob })])
@@ -537,19 +512,52 @@ export default function ControlPanel({
   const resetView = () =>
     setTransform((prev) => ({ ...prev, zoom: 1, pan: { x: 0, y: 0 } }));
   const fitWindow = () => {
-    const diagram = document.getElementById("diagram").getBoundingClientRect();
     const canvas = document.getElementById("canvas").getBoundingClientRect();
 
-    const scaleX = canvas.width / diagram.width;
-    const scaleY = canvas.height / diagram.height;
-    const scale = Math.min(scaleX, scaleY);
-    const translateX = canvas.left;
-    const translateY = canvas.top;
+    const minMaxXY = {
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity,
+    };
+
+    tables.forEach((table) => {
+      minMaxXY.minX = Math.min(minMaxXY.minX, table.x);
+      minMaxXY.minY = Math.min(minMaxXY.minY, table.y);
+      minMaxXY.maxX = Math.max(minMaxXY.maxX, table.x + settings.tableWidth);
+      minMaxXY.maxY = Math.max(minMaxXY.maxY, table.y + getTableHeight(table));
+    });
+
+    areas.forEach((area) => {
+      minMaxXY.minX = Math.min(minMaxXY.minX, area.x);
+      minMaxXY.minY = Math.min(minMaxXY.minY, area.y);
+      minMaxXY.maxX = Math.max(minMaxXY.maxX, area.x + area.width);
+      minMaxXY.maxY = Math.max(minMaxXY.maxY, area.y + area.height);
+    });
+
+    notes.forEach((note) => {
+      minMaxXY.minX = Math.min(minMaxXY.minX, note.x);
+      minMaxXY.minY = Math.min(minMaxXY.minY, note.y);
+      minMaxXY.maxX = Math.max(minMaxXY.maxX, note.x + noteWidth);
+      minMaxXY.maxY = Math.max(minMaxXY.maxY, note.y + note.height);
+    });
+
+    const padding = 10;
+    const width = minMaxXY.maxX - minMaxXY.minX + padding;
+    const height = minMaxXY.maxY - minMaxXY.minY + padding;
+
+    const scaleX = canvas.width / width;
+    const scaleY = canvas.height / height;
+    // Making sure the scale is a multiple of 0.05
+    const scale = Math.floor(Math.min(scaleX, scaleY) * 20) / 20;
+
+    const centerX = (minMaxXY.minX + minMaxXY.maxX) / 2;
+    const centerY = (minMaxXY.minY + minMaxXY.maxY) / 2;
 
     setTransform((prev) => ({
       ...prev,
-      zoom: scale - 0.01,
-      pan: { x: translateX, y: translateY },
+      zoom: scale,
+      pan: { x: centerX, y: centerY },
     }));
   };
   const edit = () => {
@@ -608,6 +616,9 @@ export default function ControlPanel({
     }
   };
   const del = () => {
+    if (layout.readonly) {
+      return;
+    }
     switch (selectedElement.element) {
       case ObjectType.TABLE:
         deleteTable(selectedElement.id);
@@ -623,15 +634,20 @@ export default function ControlPanel({
     }
   };
   const duplicate = () => {
+    if (layout.readonly) {
+      return;
+    }
     switch (selectedElement.element) {
-      case ObjectType.TABLE:
+      case ObjectType.TABLE: {
+        const copiedTable = tables.find((t) => t.id === selectedElement.id);
         addTable({
-          ...tables[selectedElement.id],
-          x: tables[selectedElement.id].x + 20,
-          y: tables[selectedElement.id].y + 20,
-          id: tables.length,
+          ...copiedTable,
+          x: copiedTable.x + 20,
+          y: copiedTable.y + 20,
+          id: nanoid(),
         });
         break;
+      }
       case ObjectType.NOTE:
         addNote({
           ...notes[selectedElement.id],
@@ -656,7 +672,9 @@ export default function ControlPanel({
     switch (selectedElement.element) {
       case ObjectType.TABLE:
         navigator.clipboard
-          .writeText(JSON.stringify({ ...tables[selectedElement.id] }))
+          .writeText(
+            JSON.stringify(tables.find((t) => t.id === selectedElement.id)),
+          )
           .catch(() => Toast.error(t("oops_smth_went_wrong")));
         break;
       case ObjectType.NOTE:
@@ -674,6 +692,9 @@ export default function ControlPanel({
     }
   };
   const paste = () => {
+    if (layout.readonly) {
+      return;
+    }
     navigator.clipboard.readText().then((text) => {
       let obj = null;
       try {
@@ -687,7 +708,7 @@ export default function ControlPanel({
           ...obj,
           x: obj.x + 20,
           y: obj.y + 20,
-          id: tables.length,
+          id: nanoid(),
         });
       } else if (v.validate(obj, areaSchema).valid) {
         addArea({
@@ -707,8 +728,14 @@ export default function ControlPanel({
     });
   };
   const cut = () => {
+    if (layout.readonly) {
+      return;
+    }
     copy();
     del();
+  };
+  const toggleDBMLEditor = () => {
+    setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
   const save = () => setSaveState(State.SAVING);
   const open = () => setModal(MODAL.OPEN);
@@ -733,10 +760,12 @@ export default function ControlPanel({
       save: {
         function: save,
         shortcut: "Ctrl+S",
+        disabled: layout.readOnly,
       },
       save_as: {
         function: saveDiagramAs,
         shortcut: "Ctrl+Shift+S",
+        disabled: layout.readOnly,
       },
       save_as_template: {
         function: () => {
@@ -761,6 +790,7 @@ export default function ControlPanel({
         function: () => {
           setModal(MODAL.RENAME);
         },
+        disabled: layout.readOnly,
       },
       delete_diagram: {
         warning: {
@@ -781,46 +811,79 @@ export default function ControlPanel({
               setEnums([]);
               setUndoStack([]);
               setRedoStack([]);
+              setGistId("");
             })
             .catch(() => Toast.error(t("oops_smth_went_wrong")));
         },
       },
-      import_diagram: {
-        function: fileImport,
-        shortcut: "Ctrl+I",
+      import_from: {
+        children: [
+          {
+            function: fileImport,
+            name: "JSON",
+            disabled: layout.readOnly,
+          },
+          {
+            function: () => {
+              setModal(MODAL.IMPORT);
+              setImportFrom(IMPORT_FROM.DBML);
+            },
+            name: "DBML",
+            disabled: layout.readOnly,
+          },
+        ],
       },
       import_from_source: {
         ...(database === DB.GENERIC && {
           children: [
             {
-              MySQL: () => {
+              function: () => {
                 setModal(MODAL.IMPORT_SRC);
                 setImportDb(DB.MYSQL);
               },
+              name: "MySQL",
+              disabled: layout.readOnly,
             },
             {
-              PostgreSQL: () => {
+              function: () => {
                 setModal(MODAL.IMPORT_SRC);
                 setImportDb(DB.POSTGRES);
               },
+              name: "PostgreSQL",
+              disabled: layout.readOnly,
             },
             {
-              SQLite: () => {
+              function: () => {
                 setModal(MODAL.IMPORT_SRC);
                 setImportDb(DB.SQLITE);
               },
+              name: "SQLite",
+              disabled: layout.readOnly,
             },
             {
-              MariaDB: () => {
+              function: () => {
                 setModal(MODAL.IMPORT_SRC);
                 setImportDb(DB.MARIADB);
               },
+              name: "MariaDB",
+              disabled: layout.readOnly,
             },
             {
-              MSSQL: () => {
+              function: () => {
                 setModal(MODAL.IMPORT_SRC);
                 setImportDb(DB.MSSQL);
               },
+              name: "MSSQL",
+              disabled: layout.readOnly,
+            },
+            {
+              function: () => {
+                setModal(MODAL.IMPORT_SRC);
+                setImportDb(DB.ORACLESQL);
+              },
+              name: "Oracle",
+              label: "Beta",
+              disabled: layout.readOnly,
             },
           ],
         }),
@@ -829,12 +892,14 @@ export default function ControlPanel({
 
           setModal(MODAL.IMPORT_SRC);
         },
+        disabled: layout.readOnly,
       },
       export_source: {
         ...(database === DB.GENERIC && {
           children: [
             {
-              MySQL: () => {
+              name: "MySQL",
+              function: () => {
                 setModal(MODAL.CODE);
                 const src = jsonToMySQL({
                   tables: tables,
@@ -850,7 +915,8 @@ export default function ControlPanel({
               },
             },
             {
-              PostgreSQL: () => {
+              name: "PostgreSQL",
+              function: () => {
                 setModal(MODAL.CODE);
                 const src = jsonToPostgreSQL({
                   tables: tables,
@@ -866,7 +932,8 @@ export default function ControlPanel({
               },
             },
             {
-              SQLite: () => {
+              name: "SQLite",
+              function: () => {
                 setModal(MODAL.CODE);
                 const src = jsonToSQLite({
                   tables: tables,
@@ -882,7 +949,8 @@ export default function ControlPanel({
               },
             },
             {
-              MariaDB: () => {
+              name: "MariaDB",
+              function: () => {
                 setModal(MODAL.CODE);
                 const src = jsonToMariaDB({
                   tables: tables,
@@ -898,9 +966,28 @@ export default function ControlPanel({
               },
             },
             {
-              MSSQL: () => {
+              name: "MSSQL",
+              function: () => {
                 setModal(MODAL.CODE);
                 const src = jsonToSQLServer({
+                  tables: tables,
+                  references: relationships,
+                  types: types,
+                  database: database,
+                });
+                setExportData((prev) => ({
+                  ...prev,
+                  data: src,
+                  extension: "sql",
+                }));
+              },
+            },
+            {
+              label: "Beta",
+              name: "Oracle",
+              function: () => {
+                setModal(MODAL.CODE);
+                const src = jsonToOracleSQL({
                   tables: tables,
                   references: relationships,
                   types: types,
@@ -935,8 +1022,11 @@ export default function ControlPanel({
       export_as: {
         children: [
           {
-            PNG: () => {
-              toPng(document.getElementById("canvas")).then(function (dataUrl) {
+            name: "PNG",
+            function: () => {
+              toPng(document.getElementById("canvas"), {
+                pixelRatio: pngExportPixelRatio,
+              }).then(function (dataUrl) {
                 setExportData((prev) => ({
                   ...prev,
                   data: dataUrl,
@@ -947,7 +1037,8 @@ export default function ControlPanel({
             },
           },
           {
-            JPEG: () => {
+            name: "JPEG",
+            function: () => {
               toJpeg(document.getElementById("canvas"), { quality: 0.95 }).then(
                 function (dataUrl) {
                   setExportData((prev) => ({
@@ -961,7 +1052,24 @@ export default function ControlPanel({
             },
           },
           {
-            JSON: () => {
+            name: "SVG",
+            function: () => {
+              const filter = (node) => node.tagName !== "i";
+              toSvg(document.getElementById("canvas"), { filter: filter }).then(
+                function (dataUrl) {
+                  setExportData((prev) => ({
+                    ...prev,
+                    data: dataUrl,
+                    extension: "svg",
+                  }));
+                },
+              );
+              setModal(MODAL.IMG);
+            },
+          },
+          {
+            name: "JSON",
+            function: () => {
               setModal(MODAL.CODE);
               const result = JSON.stringify(
                 {
@@ -985,22 +1093,25 @@ export default function ControlPanel({
             },
           },
           {
-            SVG: () => {
-              const filter = (node) => node.tagName !== "i";
-              toSvg(document.getElementById("canvas"), { filter: filter }).then(
-                function (dataUrl) {
-                  setExportData((prev) => ({
-                    ...prev,
-                    data: dataUrl,
-                    extension: "svg",
-                  }));
-                },
-              );
-              setModal(MODAL.IMG);
+            name: "DBML",
+            function: () => {
+              setModal(MODAL.CODE);
+              const result = toDBML({
+                tables,
+                relationships,
+                enums,
+                database,
+              });
+              setExportData((prev) => ({
+                ...prev,
+                data: result,
+                extension: "dbml",
+              }));
             },
           },
           {
-            PDF: () => {
+            name: "PDF",
+            function: () => {
               const canvas = document.getElementById("canvas");
               toJpeg(canvas).then(function (dataUrl) {
                 const doc = new jsPDF("l", "px", [
@@ -1020,31 +1131,8 @@ export default function ControlPanel({
             },
           },
           {
-            DRAWDB: () => {
-              const result = JSON.stringify(
-                {
-                  author: "Unnamed",
-                  title: title,
-                  date: new Date().toISOString(),
-                  tables: tables,
-                  relationships: relationships,
-                  notes: notes,
-                  subjectAreas: areas,
-                  database: database,
-                  ...(databases[database].hasTypes && { types: types }),
-                  ...(databases[database].hasEnums && { enums: enums }),
-                },
-                null,
-                2,
-              );
-              const blob = new Blob([result], {
-                type: "text/plain;charset=utf-8",
-              });
-              saveAs(blob, `${exportData.filename}.ddb`);
-            },
-          },
-          {
-            MERMAID: () => {
+            name: "Mermaid",
+            function: () => {
               setModal(MODAL.CODE);
               const result = jsonToMermaid({
                 tables: tables,
@@ -1053,6 +1141,27 @@ export default function ControlPanel({
                 subjectAreas: areas,
                 database: database,
                 title: title,
+              });
+              setExportData((prev) => ({
+                ...prev,
+                data: result,
+                extension: "md",
+              }));
+            },
+          },
+          {
+            name: "Markdown",
+            function: () => {
+              setModal(MODAL.CODE);
+              const result = jsonToDocumentation({
+                tables: tables,
+                relationships: relationships,
+                notes: notes,
+                subjectAreas: areas,
+                database: database,
+                title: title,
+                ...(databases[database].hasTypes && { types: types }),
+                ...(databases[database].hasEnums && { enums: enums }),
               });
               setExportData((prev) => ({
                 ...prev,
@@ -1075,17 +1184,19 @@ export default function ControlPanel({
       undo: {
         function: undo,
         shortcut: "Ctrl+Z",
+        disabled: layout.readOnly || undoStack.length === 0,
       },
       redo: {
         function: redo,
         shortcut: "Ctrl+Y",
+        disabled: layout.readOnly || redoStack.length === 0,
       },
       clear: {
         warning: {
           title: t("clear"),
           message: t("are_you_sure_clear"),
         },
-        function: () => {
+        function: async () => {
           setTables([]);
           setRelationships([]);
           setAreas([]);
@@ -1094,15 +1205,33 @@ export default function ControlPanel({
           setTypes([]);
           setUndoStack([]);
           setRedoStack([]);
+
+          if (!diagramId) {
+            Toast.error(t("oops_smth_went_wrong"));
+            return;
+          }
+
+          db.table("diagrams")
+            .delete(diagramId)
+            .catch((error) => {
+              Toast.error(t("oops_smth_went_wrong"));
+              console.error(
+                `Error deleting records with gistId '${diagramId}':`,
+                error,
+              );
+            });
         },
+        disabled: layout.readOnly,
       },
       edit: {
         function: edit,
         shortcut: "Ctrl+E",
+        disabled: layout.readOnly,
       },
       cut: {
         function: cut,
         shortcut: "Ctrl+X",
+        disabled: layout.readOnly,
       },
       copy: {
         function: copy,
@@ -1111,14 +1240,17 @@ export default function ControlPanel({
       paste: {
         function: paste,
         shortcut: "Ctrl+V",
+        disabled: layout.readOnly,
       },
       duplicate: {
         function: duplicate,
         shortcut: "Ctrl+D",
+        disabled: layout.readOnly,
       },
       delete: {
         function: del,
         shortcut: "Del",
+        disabled: layout.readOnly,
       },
       copy_as_image: {
         function: copyAsImage,
@@ -1153,6 +1285,15 @@ export default function ControlPanel({
         function: () =>
           setLayout((prev) => ({ ...prev, issues: !prev.issues })),
       },
+      dbml_view: {
+        state: layout.dbmlEditor ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: toggleDBMLEditor,
+        shortcut: "Alt+E",
+      },
       strict_mode: {
         state: settings.strictMode ? (
           <i className="bi bi-toggle-off" />
@@ -1184,7 +1325,19 @@ export default function ControlPanel({
       },
       reset_view: {
         function: resetView,
-        shortcut: "Ctrl+R",
+        shortcut: "Enter/Return",
+      },
+      show_datatype: {
+        state: settings.showDataTypes ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: () =>
+          setSettings((prev) => ({
+            ...prev,
+            showDataTypes: !prev.showDataTypes,
+          })),
       },
       show_grid: {
         state: settings.showGrid ? (
@@ -1194,6 +1347,14 @@ export default function ControlPanel({
         ),
         function: viewGrid,
         shortcut: "Ctrl+Shift+G",
+      },
+      snap_to_grid: {
+        state: settings.snapToGrid ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: snapToGrid,
       },
       show_cardinality: {
         state: settings.showCardinality ? (
@@ -1205,6 +1366,18 @@ export default function ControlPanel({
           setSettings((prev) => ({
             ...prev,
             showCardinality: !prev.showCardinality,
+          })),
+      },
+      show_relationship_labels: {
+        state: settings.showRelationshipLabels ? (
+          <i className="bi bi-toggle-on" />
+        ) : (
+          <i className="bi bi-toggle-off" />
+        ),
+        function: () =>
+          setSettings((prev) => ({
+            ...prev,
+            showRelationshipLabels: !prev.showRelationshipLabels,
           })),
       },
       show_debug_coordinates: {
@@ -1222,24 +1395,12 @@ export default function ControlPanel({
       theme: {
         children: [
           {
-            light: () => {
-              const body = document.body;
-              if (body.hasAttribute("theme-mode")) {
-                body.setAttribute("theme-mode", "light");
-              }
-              localStorage.setItem("theme", "light");
-              setSettings((prev) => ({ ...prev, mode: "light" }));
-            },
+            name: t("light"),
+            function: () => setSettings((prev) => ({ ...prev, mode: "light" })),
           },
           {
-            dark: () => {
-              const body = document.body;
-              if (body.hasAttribute("theme-mode")) {
-                body.setAttribute("theme-mode", "dark");
-              }
-              localStorage.setItem("theme", "dark");
-              setSettings((prev) => ({ ...prev, mode: "dark" }));
-            },
+            name: t("dark"),
+            function: () => setSettings((prev) => ({ ...prev, mode: "dark" })),
           },
         ],
         function: () => {},
@@ -1274,20 +1435,21 @@ export default function ControlPanel({
         function: () =>
           setSettings((prev) => ({ ...prev, autosave: !prev.autosave })),
       },
-      panning: {
-        state: settings.panning ? (
-          <i className="bi bi-toggle-on" />
-        ) : (
-          <i className="bi bi-toggle-off" />
-        ),
-        function: () =>
-          setSettings((prev) => ({ ...prev, panning: !prev.panning })),
-      },
       table_width: {
         function: () => setModal(MODAL.TABLE_WIDTH),
+        disabled: layout.readOnly,
       },
       language: {
         function: () => setModal(MODAL.LANGUAGE),
+      },
+      export_saved_data: {
+        function: exportSavedData,
+      },
+      clear_cache: {
+        function: () => {
+          deleteFromCache(gistId);
+          Toast.success(t("cache_cleared"));
+        },
       },
       flush_storage: {
         warning: {
@@ -1295,6 +1457,7 @@ export default function ControlPanel({
           message: t("are_you_sure_flush_storage"),
         },
         function: async () => {
+          localStorage.removeItem(STORAGE_KEY);
           db.delete()
             .then(() => {
               Toast.success(t("storage_flushed"));
@@ -1307,56 +1470,77 @@ export default function ControlPanel({
       },
     },
     help: {
-      shortcuts: {
-        function: () => window.open("/shortcuts", "_blank"),
+      docs: {
+        function: () => window.open(`${socials.docs}`, "_blank"),
         shortcut: "Ctrl+H",
       },
+      shortcuts: {
+        function: () => window.open(`${socials.docs}/shortcuts`, "_blank"),
+      },
       ask_on_discord: {
-        function: () => window.open("https://discord.gg/BrjZgNrmR6", "_blank"),
+        function: () => window.open(socials.discord, "_blank"),
       },
       report_bug: {
         function: () => window.open("/bug-report", "_blank"),
       },
-      feedback: {
-        function: () => window.open("/survey", "_blank"),
-      },
     },
   };
 
-  useHotkeys("ctrl+i, meta+i", fileImport, { preventDefault: true });
-  useHotkeys("ctrl+z, meta+z", undo, { preventDefault: true });
-  useHotkeys("ctrl+y, meta+y", redo, { preventDefault: true });
-  useHotkeys("ctrl+s, meta+s", save, { preventDefault: true });
-  useHotkeys("ctrl+o, meta+o", open, { preventDefault: true });
-  useHotkeys("ctrl+e, meta+e", edit, { preventDefault: true });
-  useHotkeys("ctrl+d, meta+d", duplicate, { preventDefault: true });
-  useHotkeys("ctrl+c, meta+c", copy, { preventDefault: true });
-  useHotkeys("ctrl+v, meta+v", paste, { preventDefault: true });
-  useHotkeys("ctrl+x, meta+x", cut, { preventDefault: true });
+  useHotkeys("mod+i", fileImport, { preventDefault: true });
+  useHotkeys("mod+z", undo, { preventDefault: true });
+  useHotkeys("mod+y", redo, { preventDefault: true });
+  useHotkeys("mod+s", save, { preventDefault: true });
+  useHotkeys("mod+o", open, { preventDefault: true });
+  useHotkeys("mod+e", edit, { preventDefault: true });
+  useHotkeys("mod+d", duplicate, { preventDefault: true });
+  useHotkeys("mod+c", copy, { preventDefault: true });
+  useHotkeys("mod+v", paste, { preventDefault: true });
+  useHotkeys("mod+x", cut, { preventDefault: true });
   useHotkeys("delete", del, { preventDefault: true });
-  useHotkeys("ctrl+shift+g, meta+shift+g", viewGrid, { preventDefault: true });
-  useHotkeys("ctrl+up, meta+up", zoomIn, { preventDefault: true });
-  useHotkeys("ctrl+down, meta+down", zoomOut, { preventDefault: true });
-  useHotkeys("ctrl+shift+m, meta+shift+m", viewStrictMode, {
+  useHotkeys("mod+shift+g", viewGrid, { preventDefault: true });
+  useHotkeys("mod+up", zoomIn, { preventDefault: true });
+  useHotkeys("mod+down", zoomOut, { preventDefault: true });
+  useHotkeys("mod+shift+m", viewStrictMode, {
     preventDefault: true,
   });
-  useHotkeys("ctrl+shift+f, meta+shift+f", viewFieldSummary, {
+  useHotkeys("mod+shift+f", viewFieldSummary, {
     preventDefault: true,
   });
-  useHotkeys("ctrl+shift+s, meta+shift+s", saveDiagramAs, {
+  useHotkeys("mod+shift+s", saveDiagramAs, {
     preventDefault: true,
   });
-  useHotkeys("ctrl+alt+c, meta+alt+c", copyAsImage, { preventDefault: true });
-  useHotkeys("ctrl+r, meta+r", resetView, { preventDefault: true });
-  useHotkeys("ctrl+h, meta+h", () => window.open("/shortcuts", "_blank"), {
+  useHotkeys("mod+alt+c", copyAsImage, { preventDefault: true });
+  useHotkeys("enter", resetView, { preventDefault: true });
+  useHotkeys("mod+h", () => window.open(socials.docs, "_blank"), {
     preventDefault: true,
   });
-  useHotkeys("ctrl+alt+w, meta+alt+w", fitWindow, { preventDefault: true });
+  useHotkeys("mod+alt+w", fitWindow, { preventDefault: true });
+  useHotkeys("alt+e", toggleDBMLEditor, { preventDefault: true });
 
   return (
     <>
-      {layout.header && header()}
-      {layout.toolbar && toolbar()}
+      <div>
+        {layout.header && (
+          <div
+            className="flex justify-between items-center me-7"
+            style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
+          >
+            {header()}
+            {window.name.split(" ")[0] !== "t" && (
+              <Button
+                type="primary"
+                className="!text-base me-2 !pe-6 !ps-5 !py-[18px] !rounded-md"
+                size="default"
+                icon={<IconShareStroked />}
+                onClick={() => setModal(MODAL.SHARE)}
+              >
+                {t("share")}
+              </Button>
+            )}
+          </div>
+        )}
+        {layout.toolbar && toolbar()}
+      </div>
       <Modal
         modal={modal}
         exportData={exportData}
@@ -1365,10 +1549,13 @@ export default function ControlPanel({
         setTitle={setTitle}
         setDiagramId={setDiagramId}
         setModal={setModal}
+        importFrom={importFrom}
         importDb={importDb}
       />
       <Sidesheet
         type={sidesheet}
+        title={title}
+        setTitle={setTitle}
         onClose={() => setSidesheet(SIDESHEET.NONE)}
       />
     </>
@@ -1427,7 +1614,7 @@ export default function ControlPanel({
             }
             trigger="click"
           >
-            <div className="py-1 px-2 hover-2 rounded flex items-center justify-center">
+            <div className="py-1 px-2 hover-2 rounded-sm flex items-center justify-center">
               <div className="w-[40px]">
                 {Math.floor(transform.zoom * 100)}%
               </div>
@@ -1438,7 +1625,7 @@ export default function ControlPanel({
           </Dropdown>
           <Tooltip content={t("zoom_in")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded text-lg"
+              className="py-1 px-2 hover-2 rounded-sm text-lg"
               onClick={() =>
                 setTransform((prev) => ({ ...prev, zoom: prev.zoom * 1.2 }))
               }
@@ -1448,7 +1635,7 @@ export default function ControlPanel({
           </Tooltip>
           <Tooltip content={t("zoom_out")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded text-lg"
+              className="py-1 px-2 hover-2 rounded-sm text-lg"
               onClick={() =>
                 setTransform((prev) => ({ ...prev, zoom: prev.zoom / 1.2 }))
               }
@@ -1459,47 +1646,46 @@ export default function ControlPanel({
           <Divider layout="vertical" margin="8px" />
           <Tooltip content={t("undo")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded flex items-center"
+              className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
+              disabled={undoStack.length === 0 || layout.readOnly}
               onClick={undo}
             >
-              <IconUndo
-                size="large"
-                style={{ color: undoStack.length === 0 ? "#9598a6" : "" }}
-              />
+              <IconUndo size="large" />
             </button>
           </Tooltip>
           <Tooltip content={t("redo")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded flex items-center"
+              className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
+              disabled={redoStack.length === 0 || layout.readOnly}
               onClick={redo}
             >
-              <IconRedo
-                size="large"
-                style={{ color: redoStack.length === 0 ? "#9598a6" : "" }}
-              />
+              <IconRedo size="large" />
             </button>
           </Tooltip>
           <Divider layout="vertical" margin="8px" />
           <Tooltip content={t("add_table")} position="bottom">
             <button
-              className="flex items-center py-1 px-2 hover-2 rounded"
+              className="flex items-center py-1 px-2 hover-2 rounded-sm disabled:opacity-50"
               onClick={() => addTable()}
+              disabled={layout.readOnly}
             >
               <IconAddTable />
             </button>
           </Tooltip>
           <Tooltip content={t("add_area")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded flex items-center"
+              className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
               onClick={() => addArea()}
+              disabled={layout.readOnly}
             >
               <IconAddArea />
             </button>
           </Tooltip>
           <Tooltip content={t("add_note")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded flex items-center"
+              className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
               onClick={() => addNote()}
+              disabled={layout.readOnly}
             >
               <IconAddNote />
             </button>
@@ -1507,15 +1693,24 @@ export default function ControlPanel({
           <Divider layout="vertical" margin="8px" />
           <Tooltip content={t("save")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded flex items-center"
+              className="py-1 px-2 hover-2 rounded-sm flex items-center disabled:opacity-50"
               onClick={save}
+              disabled={layout.readOnly}
             >
               <IconSaveStroked size="extra-large" />
             </button>
           </Tooltip>
+          <Tooltip content={t("versions")} position="bottom">
+            <button
+              className="py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5"
+              onClick={() => setSidesheet(SIDESHEET.VERSIONS)}
+            >
+              <i className="fa-solid fa-code-branch" />{" "}
+            </button>
+          </Tooltip>
           <Tooltip content={t("to_do")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded text-xl -mt-0.5"
+              className="py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5"
               onClick={() => setSidesheet(SIDESHEET.TODO)}
             >
               <i className="fa-regular fa-calendar-check" />
@@ -1524,14 +1719,14 @@ export default function ControlPanel({
           <Divider layout="vertical" margin="8px" />
           <Tooltip content={t("theme")} position="bottom">
             <button
-              className="py-1 px-2 hover-2 rounded text-xl -mt-0.5"
+              className="py-1 px-2 hover-2 rounded-sm text-xl -mt-0.5"
               onClick={() => {
                 const body = document.body;
                 if (body.hasAttribute("theme-mode")) {
                   if (body.getAttribute("theme-mode") === "light") {
-                    menu["view"]["theme"].children[1]["dark"]();
+                    menu["view"]["theme"].children[1].function();
                   } else {
-                    menu["view"]["theme"].children[0]["light"]();
+                    menu["view"]["theme"].children[0].function();
                   }
                 }
               }}
@@ -1562,6 +1757,8 @@ export default function ControlPanel({
         return t("saving");
       case State.ERROR:
         return t("failed_to_save");
+      case State.FAILED_TO_LOAD:
+        return t("failed_to_load");
       default:
         return "";
     }
@@ -1579,7 +1776,7 @@ export default function ControlPanel({
               width={54}
               src={icon}
               alt="logo"
-              className="ms-8 min-w-[54px]"
+              className="ms-7 min-w-[54px]"
             />
           </Link>
           <div className="ms-1 mt-1">
@@ -1597,7 +1794,7 @@ export default function ControlPanel({
                 />
               )}
               <div
-                className="text-xl  me-1"
+                className="text-xl flex items-center gap-1 me-1"
                 onPointerEnter={(e) => e.isPrimary && setShowEditName(true)}
                 onPointerLeave={(e) => e.isPrimary && setShowEditName(false)}
                 onPointerDown={(e) => {
@@ -1605,14 +1802,24 @@ export default function ControlPanel({
                   // https://stackoverflow.com/a/70976017/1137077
                   e.target.releasePointerCapture(e.pointerId);
                 }}
-                onClick={() => setModal(MODAL.RENAME)}
+                onClick={!layout.readOnly && (() => setModal(MODAL.RENAME))}
               >
-                {window.name.split(" ")[0] === "t" ? "Templates/" : "Diagrams/"}
-                {title}
+                <span>
+                  {(window.name.split(" ")[0] === "t"
+                    ? "Templates/"
+                    : "Diagrams/") + title}
+                </span>
+                {version && (
+                  <Tag className="mt-1" color="blue" size="small">
+                    {version.substring(0, 7)}
+                  </Tag>
+                )}
               </div>
-              {(showEditName || modal === MODAL.RENAME) && <IconEdit />}
+              {(showEditName || modal === MODAL.RENAME) && !layout.readOnly && (
+                <IconEdit />
+              )}
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex items-center">
               <div className="flex justify-start text-md select-none me-2">
                 {Object.keys(menu).map((category) => (
                   <Dropdown
@@ -1623,12 +1830,12 @@ export default function ControlPanel({
                       direction: isRtl(i18n.language) ? "rtl" : "ltr",
                     }}
                     render={
-                      <Dropdown.Menu>
+                      <Dropdown.Menu className="menu max-h-[calc(100vh-80px)] overflow-auto">
                         {Object.keys(menu[category]).map((item, index) => {
                           if (menu[category][item].children) {
                             return (
                               <Dropdown
-                                style={{ width: "120px" }}
+                                style={{ width: "150px" }}
                                 key={item}
                                 position="rightTop"
                                 render={
@@ -1637,9 +1844,19 @@ export default function ControlPanel({
                                       (e, i) => (
                                         <Dropdown.Item
                                           key={i}
-                                          onClick={Object.values(e)[0]}
+                                          onClick={e.function}
+                                          className="flex justify-between"
+                                          disabled={e.disabled}
                                         >
-                                          {t(Object.keys(e)[0])}
+                                          <span>{e.name}</span>
+                                          {e.label && (
+                                            <Tag
+                                              size="small"
+                                              color="light-blue"
+                                            >
+                                              {e.label}
+                                            </Tag>
+                                          )}
                                         </Dropdown.Item>
                                       ),
                                     )}
@@ -1683,6 +1900,7 @@ export default function ControlPanel({
                           return (
                             <Dropdown.Item
                               key={index}
+                              disabled={menu[category][item].disabled}
                               onClick={menu[category][item].function}
                               style={
                                 menu[category][item].shortcut && {
@@ -1710,23 +1928,27 @@ export default function ControlPanel({
                       </Dropdown.Menu>
                     }
                   >
-                    <div className="px-3 py-1 hover-2 rounded">
+                    <div className="px-3 py-1 hover-2 rounded-sm">
                       {t(category)}
                     </div>
                   </Dropdown>
                 ))}
               </div>
-              <Button
-                size="small"
-                type="tertiary"
-                icon={
-                  saveState === State.LOADING || saveState === State.SAVING ? (
-                    <Spin size="small" />
-                  ) : null
-                }
-              >
-                {getState()}
-              </Button>
+              {layout.readOnly && <Tag size="small">{t("read_only")}</Tag>}
+              {!layout.readOnly && (
+                <Tag
+                  size="small"
+                  type="light"
+                  prefixIcon={
+                    saveState === State.LOADING ||
+                    saveState === State.SAVING ? (
+                      <Spin size="small" />
+                    ) : null
+                  }
+                >
+                  {getState()}
+                </Tag>
+              )}
             </div>
           </div>
         </div>

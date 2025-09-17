@@ -1,3 +1,11 @@
+import ReactDOM from "react-dom/client";
+import { LocaleProvider } from "@douyinfe/semi-ui";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
+import App from "./App.jsx";
+import en_US from "@douyinfe/semi-ui/lib/es/locale/source/en_US";
+import "./index.css";
+import "./i18n/i18n.js";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useLayoutEffect } from "react";
 import Editor from "./pages/Editor";
@@ -10,6 +18,14 @@ import SettingsContextProvider from "./context/SettingsContext";
 import { useSettings } from "./hooks";
 import NotFound from "./pages/NotFound";
 
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <LocaleProvider locale={en_US}>
+    <App />
+    <Analytics />
+    <SpeedInsights />
+  </LocaleProvider>,
+);
 export default function App() {
   return (
     <SettingsContextProvider>

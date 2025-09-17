@@ -23,6 +23,8 @@ export const getModalTitle = (modal) => {
       return i18n.t("table_width");
     case MODAL.LANGUAGE:
       return i18n.t("language");
+    case MODAL.SHARE:
+      return i18n.t("share");
     default:
       return "";
   }
@@ -32,6 +34,7 @@ export const getModalWidth = (modal) => {
   switch (modal) {
     case MODAL.LANGUAGE:
     case MODAL.OPEN:
+    case MODAL.CODE:
     case MODAL.NEW:
       return 740;
     default:
@@ -55,6 +58,8 @@ export const getOkText = (modal) => {
       return i18n.t("save_as");
     case MODAL.NEW:
       return i18n.t("create");
+    case MODAL.SHARE:
+      return i18n.t("share");
     default:
       return i18n.t("confirm");
   }

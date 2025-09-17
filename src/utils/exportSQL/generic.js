@@ -1,5 +1,6 @@
+import { DB } from "../../data/constants";
 import { dbToTypes, defaultTypes } from "../../data/datatypes";
-import { getInlineFK, parseDefault } from "./shared";
+import { escapeQuotes, getInlineFK, parseDefault } from "./shared";
 
 export function getJsonType(f) {
   if (!Object.keys(defaultTypes).includes(f.type)) {
@@ -42,10 +43,10 @@ export function generateSchema(type) {
 export function getTypeString(
   field,
   currentDb,
-  dbms = "mysql",
+  dbms = DB.MYSQL,
   baseType = false,
 ) {
-  if (dbms === "mysql") {
+  if (dbms === DB.MYSQL) {
     if (field.type === "UUID") {
       return `VARCHAR(36)`;
     }
@@ -62,7 +63,7 @@ export function getTypeString(
       return "JSON";
     }
     return field.type;
-  } else if (dbms === "postgres") {
+  } else if (dbms === DB.POSTGRES) {
     if (field.type === "SMALLINT" && field.increment) {
       return "smallserial";
     }
@@ -84,7 +85,7 @@ export function getTypeString(
     if (field.type === "DATETIME") {
       return `timestamp`;
     }
-    if (dbToTypes[currentDb][field.type].isSized) {
+    if (dbToTypes[currentDb][field.type].isSized && field.size) {
       const type =
         field.type === "BINARY"
           ? "bit"
@@ -93,11 +94,15 @@ export function getTypeString(
             : field.type.toLowerCase();
       return `${type}(${field.size})`;
     }
-    if (dbToTypes[currentDb][field.type].hasPrecision && field.size !== "") {
+    if (
+      dbToTypes[currentDb][field.type].hasPrecision &&
+      field.size &&
+      field.size.trim() !== ""
+    ) {
       return `${field.type.toLowerCase()}${field.size ? `(${field.size})` : ""}`;
     }
     return field.type.toLowerCase();
-  } else if (dbms === "mssql") {
+  } else if (dbms === DB.MSSQL) {
     let type = field.type;
     switch (field.type) {
       case "ENUM":
@@ -134,6 +139,47 @@ export function getTypeString(
     }
 
     return type;
+  } else if (dbms === DB.ORACLESQL) {
+    let oracleType;
+    switch (field.type) {
+      case "BIGINT":
+        oracleType = "NUMBER";
+        break;
+      case "VARCHAR":
+        oracleType = "VARCHAR2";
+        break;
+      case "TEXT":
+        oracleType = "CLOB";
+        break;
+      case "TIME":
+      case "DATETIME":
+        oracleType = "TIMESTAMP";
+        break;
+      case "BINARY":
+      case "VARBINARY":
+        oracleType = "RAW";
+        break;
+      case "UUID":
+        oracleType = "RAW(16)";
+        break;
+      case "SET":
+      case "ENUM":
+        oracleType = field.name + "_t";
+        break;
+      default:
+        oracleType = field.type;
+        break;
+    }
+    const typeInfo = dbToTypes[currentDb][oracleType];
+    if (typeInfo.isSized || typeInfo.hasPrecision) {
+      if (oracleType === "NUMBER") {
+        return `${oracleType}${field.size ? `(${field.size})` : "(38,0)"}`;
+      } else {
+        return `${oracleType}${field.size ? `(${field.size})` : ""}`;
+      }
+    }
+
+    return oracleType;
   }
 }
 
@@ -163,7 +209,7 @@ export function jsonToMySQL(obj) {
                       )}", \`${field.name}\`))`
                     : ""
                   : ` CHECK(${field.check})`
-              }${field.comment ? ` COMMENT '${field.comment}'` : ""}`,
+              }${field.comment ? ` COMMENT '${escapeQuotes(field.comment)}'` : ""}`,
           )
           .join(",\n")}${
           table.fields.filter((f) => f.primary).length > 0
@@ -172,7 +218,7 @@ export function jsonToMySQL(obj) {
                 .map((f) => `\`${f.name}\``)
                 .join(", ")})`
             : ""
-        }\n)${table.comment ? ` COMMENT='${table.comment}'` : ""};\n${`\n${table.indices
+        }\n)${table.comment ? ` COMMENT='${escapeQuotes(table.comment)}'` : ""};\n${`\n${table.indices
           .map(
             (i) =>
               `CREATE ${i.unique ? "UNIQUE " : ""}INDEX \`${i.name}\`\nON \`${table.name}\` (${i.fields
@@ -182,16 +228,20 @@ export function jsonToMySQL(obj) {
           .join("\n")}`}`,
     )
     .join("\n")}\n${obj.references
-    .map(
-      (r) =>
-        `ALTER TABLE \`${
-          obj.tables[r.startTableId].name
-        }\`\nADD FOREIGN KEY(\`${
-          obj.tables[r.startTableId].fields[r.startFieldId].name
-        }\`) REFERENCES \`${obj.tables[r.endTableId].name}\`(\`${
-          obj.tables[r.endTableId].fields[r.endFieldId].name
-        }\`)\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`,
-    )
+    .map((r) => {
+      const { name: startName, fields: startFields } = obj.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+
+      const { name: endName, fields: endFields } = obj.tables.find(
+        (t) => t.id === r.endTableId,
+      );
+      return `ALTER TABLE \`${startName}\`\nADD FOREIGN KEY(\`${
+        startFields.find((f) => f.id === r.startFieldId).name
+      }\`) REFERENCES \`${endName}\`(\`${
+        endFields.find((f) => f.id === r.endFieldId).name
+      }\`)\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
+    })
     .join("\n")}`;
 }
 
@@ -213,16 +263,20 @@ export function jsonToPostgreSQL(obj) {
           type.comment === "" ? "" : `/**\n${type.comment}\n*/\n`
         }CREATE TYPE ${type.name} AS (\n${type.fields
           .map(
-            (f) => `\t${f.name} ${getTypeString(f, obj.database, "postgres")}`,
+            (f) => `\t${f.name} ${getTypeString(f, obj.database, DB.POSTGRES)}`,
           )
           .join("\n")}\n);`
       );
     } else {
       return `CREATE TYPE ${type.name} AS (\n${type.fields
-        .map((f) => `\t${f.name} ${getTypeString(f, obj.database, "postgres")}`)
-        .join(
-          "\n",
-        )}\n);\n${type.comment != "" ? `\nCOMMENT ON TYPE ${type.name} IS '${type.comment}';\n` : ""}`;
+        .map(
+          (f) => `\t${f.name} ${getTypeString(f, obj.database, DB.POSTGRES)}`,
+        )
+        .join(",\n")}\n);\n${
+        type.comment && type.comment.trim() != ""
+          ? `\nCOMMENT ON TYPE ${type.name} IS '${escapeQuotes(type.comment)}';\n`
+          : ""
+      }`;
     }
   })}\n${obj.tables
     .map(
@@ -245,7 +299,7 @@ export function jsonToPostgreSQL(obj) {
             (field) =>
               `${field.comment === "" ? "" : `\t-- ${field.comment}\n`}\t"${
                 field.name
-              }" ${getTypeString(field, obj.database, "postgres")}${
+              }" ${getTypeString(field, obj.database, DB.POSTGRES)}${
                 field.notNull ? " NOT NULL" : ""
               }${field.unique ? " UNIQUE" : ""}${
                 field.default !== "" ? ` DEFAULT ${parseDefault(field)}` : ""
@@ -263,10 +317,10 @@ export function jsonToPostgreSQL(obj) {
                 .map((f) => `"${f.name}"`)
                 .join(", ")})`
             : ""
-        }\n);\n${table.comment != "" ? `\nCOMMENT ON TABLE ${table.name} IS '${table.comment}';\n` : ""}${table.fields
+        }\n);\n${table.comment != "" ? `\nCOMMENT ON TABLE ${table.name} IS '${escapeQuotes(table.comment)}';\n` : ""}${table.fields
           .map((field) =>
             field.comment.trim() !== ""
-              ? `COMMENT ON COLUMN ${table.name}.${field.name} IS '${field.comment}';\n`
+              ? `COMMENT ON COLUMN ${table.name}.${field.name} IS '${escapeQuotes(field.comment)}';\n`
               : "",
           )
           .join("")}\n${table.indices
@@ -281,14 +335,20 @@ export function jsonToPostgreSQL(obj) {
           .join("\n")}`,
     )
     .join("\n")}\n${obj.references
-    .map(
-      (r) =>
-        `ALTER TABLE "${obj.tables[r.startTableId].name}"\nADD FOREIGN KEY("${
-          obj.tables[r.startTableId].fields[r.startFieldId].name
-        }") REFERENCES "${obj.tables[r.endTableId].name}"("${
-          obj.tables[r.endTableId].fields[r.endFieldId].name
-        }")\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`,
-    )
+    .map((r) => {
+      const { name: startName, fields: startFields } = obj.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+
+      const { name: endName, fields: endFields } = obj.tables.find(
+        (t) => t.id === r.endTableId,
+      );
+      return `ALTER TABLE "${startName}"\nADD FOREIGN KEY("${
+        startFields.find((f) => f.id === r.startFieldId).name
+      }") REFERENCES "${endName}"("${
+        endFields.find((f) => f.id === r.endFieldId).name
+      }")\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
+    })
     .join("\n")}`;
 }
 
@@ -375,7 +435,7 @@ export function jsonToMariaDB(obj) {
             (field) =>
               `\t\`${
                 field.name
-              }\` ${getTypeString(field, obj.database)}${field.notNull ? " NOT NULL" : ""}${
+              }\` ${getTypeString(field, obj.database, DB.MYSQL)}${field.notNull ? " NOT NULL" : ""}${
                 field.increment ? " AUTO_INCREMENT" : ""
               }${field.unique ? " UNIQUE" : ""}${
                 field.default !== ""
@@ -392,7 +452,7 @@ export function jsonToMariaDB(obj) {
                       )}', \`${field.name}\`))`
                     : ""
                   : ` CHECK(${field.check})`
-              }${field.comment ? ` COMMENT '${field.comment}'` : ""}`,
+              }${field.comment ? ` COMMENT '${escapeQuotes(field.comment)}'` : ""}`,
           )
           .join(",\n")}${
           table.fields.filter((f) => f.primary).length > 0
@@ -401,7 +461,7 @@ export function jsonToMariaDB(obj) {
                 .map((f) => `\`${f.name}\``)
                 .join(", ")})`
             : ""
-        }\n)${table.comment ? ` COMMENT='${table.comment}'` : ""};${`\n${table.indices
+        }\n)${table.comment ? ` COMMENT='${escapeQuotes(table.comment)}'` : ""};${`\n${table.indices
           .map(
             (i) =>
               `CREATE ${i.unique ? "UNIQUE " : ""}INDEX \`${
@@ -413,16 +473,20 @@ export function jsonToMariaDB(obj) {
           .join("\n")}`}`,
     )
     .join("\n")}\n${obj.references
-    .map(
-      (r) =>
-        `ALTER TABLE \`${
-          obj.tables[r.startTableId].name
-        }\`\nADD FOREIGN KEY(\`${
-          obj.tables[r.startTableId].fields[r.startFieldId].name
-        }\`) REFERENCES \`${obj.tables[r.endTableId].name}\`(\`${
-          obj.tables[r.endTableId].fields[r.endFieldId].name
-        }\`)\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`,
-    )
+    .map((r) => {
+      const { name: startName, fields: startFields } = obj.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+
+      const { name: endName, fields: endFields } = obj.tables.find(
+        (t) => t.id === r.endTableId,
+      );
+      return `ALTER TABLE \`${startName}\`\nADD FOREIGN KEY(\`${
+        startFields.find((f) => f.id === r.startFieldId).name
+      }\`) REFERENCES \`${endName}\`(\`${
+        endFields.find((f) => f.id === r.endFieldId).name
+      }\`)\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
+    })
     .join("\n")}`;
 }
 
@@ -434,7 +498,7 @@ export function jsonToSQLServer(obj) {
       }CREATE TYPE [${type.name}] FROM ${
         type.fields.length < 0
           ? ""
-          : `${getTypeString(type.fields[0], obj.database, "mssql", true)}`
+          : `${getTypeString(type.fields[0], obj.database, DB.MSSQL, true)}`
       };\nGO\n`;
     })
     .join("\n")}\n${obj.tables
@@ -447,7 +511,7 @@ export function jsonToSQLServer(obj) {
             (field) =>
               `${field.comment === "" ? "" : `\t-- ${field.comment}\n`}\t[${
                 field.name
-              }] ${getTypeString(field, obj.database, "mssql")}${
+              }] ${getTypeString(field, obj.database, DB.MSSQL)}${
                 field.notNull ? " NOT NULL" : ""
               }${field.increment ? " IDENTITY" : ""}${
                 field.unique ? " UNIQUE" : ""
@@ -481,13 +545,92 @@ export function jsonToSQLServer(obj) {
           .join("")}`,
     )
     .join("\n")}\n${obj.references
+    .map((r) => {
+      const { name: startName, fields: startFields } = obj.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+
+      const { name: endName, fields: endFields } = obj.tables.find(
+        (t) => t.id === r.endTableId,
+      );
+      return `ALTER TABLE [${startName}]\nADD FOREIGN KEY([${
+        startFields.find((f) => f.id === r.startFieldId).name
+      }]) REFERENCES [${endName}]([${
+        endFields.find((f) => f.id === r.endFieldId).name
+      }])\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};\nGO`;
+    })
+    .join("\n")}`;
+}
+
+export function jsonToOracleSQL(obj) {
+  return `${obj.tables
     .map(
-      (r) =>
-        `ALTER TABLE [${obj.tables[r.startTableId].name}]\nADD FOREIGN KEY([${
-          obj.tables[r.startTableId].fields[r.startFieldId].name
-        }]) REFERENCES [${obj.tables[r.endTableId].name}]([${
-          obj.tables[r.endTableId].fields[r.endFieldId].name
-        }])\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};\nGO`,
+      (table) =>
+        `${
+          table.fields.filter((f) => f.type === "ENUM" || f.type === "SET")
+            .length > 0
+            ? `${table.fields
+                .filter((f) => f.type === "ENUM" || f.type === "SET")
+                .map(
+                  (f) =>
+                    `CREATE DOMAIN "${f.name}_t" AS ENUM (${f.values
+                      .map((v) => `'${v}'`)
+                      .join(", ")});\n`,
+                )
+                .join("\n")}\n`
+            : ""
+        }${
+          table.comment === "" ? "" : `/* ${table.comment} */\n`
+        }CREATE TABLE "${table.name}" (\n${table.fields
+          .map(
+            (field) =>
+              `${field.comment === "" ? "" : `  -- ${field.comment}\n`}  "${
+                field.name
+              }" ${getTypeString(field, obj.database, DB.ORACLESQL)}${
+                field.notNull ? " NOT NULL" : ""
+              }${field.increment ? " GENERATED ALWAYS AS IDENTITY" : ""}${
+                field.unique ? " UNIQUE" : ""
+              }${
+                field.default !== ""
+                  ? ` DEFAULT ${parseDefault(field, obj.database)}`
+                  : ""
+              }${
+                field.check === "" ||
+                !dbToTypes[obj.database][field.type].hasCheck
+                  ? ""
+                  : ` CHECK (${field.check})`
+              }`,
+          )
+          .join(",\n")}${
+          table.fields.filter((f) => f.primary).length > 0
+            ? `,\n  PRIMARY KEY (${table.fields
+                .filter((f) => f.primary)
+                .map((f) => `"${f.name}"`)
+                .join(", ")})`
+            : ""
+        }\n);\n${table.indices
+          .map(
+            (i) =>
+              `\nCREATE ${i.unique ? "UNIQUE " : ""}INDEX "${i.name}"\n  ON "${
+                table.name
+              }" (${i.fields.map((f) => `"${f}"`).join(", ")});`,
+          )
+          .join("\n")}`,
     )
+    .join("\n\n")}\n${obj.references
+    .map((r) => {
+      const { name: startName, fields: startFields } = obj.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+
+      const { name: endName, fields: endFields } = obj.tables.find(
+        (t) => t.id === r.endTableId,
+      );
+      return `ALTER TABLE "${startName}"\nADD CONSTRAINT "${r.name}" FOREIGN KEY ("${
+        startFields.find((f) => f.id === r.startFieldId).name
+      }") REFERENCES "${endName}"("${
+        endFields.find((f) => f.id === r.endFieldId).name
+      }");`;
+    })
     .join("\n")}`;
 }

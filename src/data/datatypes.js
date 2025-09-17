@@ -1,4 +1,18 @@
 import { strHasQuotes } from "../utils/utils";
+import {
+  binaryColor,
+  booleanColor,
+  dateColor,
+  decimalColor,
+  documentColor,
+  enumSetColor,
+  geometricColor,
+  intColor,
+  networkIdColor,
+  otherColor,
+  stringColor,
+  vectorColor,
+} from "./constants";
 import { DB } from "./constants";
 
 const intRegex = /^-?\d*$/;
@@ -9,6 +23,7 @@ const binaryRegex = /^[01]+$/;
 const defaultTypesBase = {
   INT: {
     type: "INT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -19,6 +34,7 @@ const defaultTypesBase = {
   },
   SMALLINT: {
     type: "SMALLINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -29,6 +45,7 @@ const defaultTypesBase = {
   },
   BIGINT: {
     type: "BIGINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -39,6 +56,7 @@ const defaultTypesBase = {
   },
   DECIMAL: {
     type: "DECIMAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -48,6 +66,7 @@ const defaultTypesBase = {
   },
   NUMERIC: {
     type: "NUMERIC",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -55,8 +74,20 @@ const defaultTypesBase = {
     isSized: false,
     hasPrecision: true,
   },
+  NUMBER: {
+    type: "NUMBER",
+    color: decimalColor,
+    checkDefault: (field) => {
+      return /^-?\d+(\.\d+)?$/.test(field.default);
+    },
+    hasCheck: true,
+    isSized: false,
+    hasPrecision: true,
+    canIncrement: false,
+  },
   FLOAT: {
     type: "FLOAT",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -66,6 +97,7 @@ const defaultTypesBase = {
   },
   DOUBLE: {
     type: "DOUBLE",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -75,6 +107,7 @@ const defaultTypesBase = {
   },
   REAL: {
     type: "REAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -84,6 +117,7 @@ const defaultTypesBase = {
   },
   CHAR: {
     type: "CHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -98,6 +132,7 @@ const defaultTypesBase = {
   },
   VARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -110,8 +145,24 @@ const defaultTypesBase = {
     defaultSize: 255,
     hasQuotes: true,
   },
+  VARCHAR2: {
+    type: "VARCHAR2",
+    color: stringColor,
+    checkDefault: (field) => {
+      if (strHasQuotes(field.default)) {
+        return field.default.length - 2 <= field.size;
+      }
+      return field.default.length <= field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 225,
+    hasQuotes: true,
+  },
   TEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: true,
@@ -121,6 +172,7 @@ const defaultTypesBase = {
   },
   TIME: {
     type: "TIME",
+    color: dateColor,
     checkDefault: (field) => {
       return /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default);
     },
@@ -131,6 +183,7 @@ const defaultTypesBase = {
   },
   TIMESTAMP: {
     type: "TIMESTAMP",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -140,7 +193,9 @@ const defaultTypesBase = {
       }
       const content = field.default.split(" ");
       const date = content[0].split("-");
-      return parseInt(date[0]) >= 1970 && parseInt(date[0]) <= 2038;
+      return (
+        Number.parseInt(date[0]) >= 1970 && Number.parseInt(date[0]) <= 2038
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -149,6 +204,7 @@ const defaultTypesBase = {
   },
   DATE: {
     type: "DATE",
+    color: dateColor,
     checkDefault: (field) => {
       return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
     },
@@ -159,6 +215,7 @@ const defaultTypesBase = {
   },
   DATETIME: {
     type: "DATETIME",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -168,7 +225,7 @@ const defaultTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -177,6 +234,7 @@ const defaultTypesBase = {
   },
   BOOLEAN: {
     type: "BOOLEAN",
+    color: booleanColor,
     checkDefault: (field) => {
       return (
         field.default.toLowerCase() === "false" ||
@@ -191,6 +249,7 @@ const defaultTypesBase = {
   },
   BINARY: {
     type: "BINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -204,6 +263,7 @@ const defaultTypesBase = {
   },
   VARBINARY: {
     type: "VARBINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -217,6 +277,25 @@ const defaultTypesBase = {
   },
   BLOB: {
     type: "BLOB",
+    color: binaryColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  CLOB: {
+    type: "CLOB",
+    color: stringColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  NCLOB: {
+    type: "NCLOB",
+    color: stringColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -225,6 +304,7 @@ const defaultTypesBase = {
   },
   JSON: {
     type: "JSON",
+    color: documentColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -233,14 +313,16 @@ const defaultTypesBase = {
   },
   UUID: {
     type: "UUID",
+    color: networkIdColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
     hasPrecision: false,
-    noDefault: true,
+    noDefault: false,
   },
   ENUM: {
     type: "ENUM",
+    color: enumSetColor,
     checkDefault: (field) => {
       return field.values.includes(field.default);
     },
@@ -251,6 +333,7 @@ const defaultTypesBase = {
   },
   SET: {
     type: "SET",
+    color: enumSetColor,
     checkDefault: (field) => {
       const defaultValues = field.default.split(",");
       for (let i = 0; i < defaultValues.length; i++) {
@@ -272,6 +355,7 @@ export const defaultTypes = new Proxy(defaultTypesBase, {
 const mysqlTypesBase = {
   TINYINT: {
     type: "TINYINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -283,6 +367,7 @@ const mysqlTypesBase = {
   },
   SMALLINT: {
     type: "SMALLINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -294,6 +379,7 @@ const mysqlTypesBase = {
   },
   MEDIUMINT: {
     type: "MEDIUMINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -305,6 +391,7 @@ const mysqlTypesBase = {
   },
   INTEGER: {
     type: "INTEGER",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -316,6 +403,7 @@ const mysqlTypesBase = {
   },
   BIGINT: {
     type: "BIGINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -327,6 +415,7 @@ const mysqlTypesBase = {
   },
   DECIMAL: {
     type: "DECIMAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -336,6 +425,7 @@ const mysqlTypesBase = {
   },
   NUMERIC: {
     type: "NUMERIC",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -345,6 +435,7 @@ const mysqlTypesBase = {
   },
   FLOAT: {
     type: "FLOAT",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -354,6 +445,7 @@ const mysqlTypesBase = {
   },
   DOUBLE: {
     type: "DOUBLE",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -363,6 +455,7 @@ const mysqlTypesBase = {
   },
   BIT: {
     type: "BIT",
+    color: binaryColor,
     checkDefault: (field) => {
       return field.default === "1" || field.default === "0";
     },
@@ -372,6 +465,7 @@ const mysqlTypesBase = {
   },
   BOOLEAN: {
     type: "BOOLEAN",
+    color: booleanColor,
     checkDefault: (field) => {
       return (
         field.default.toLowerCase() === "false" ||
@@ -386,6 +480,7 @@ const mysqlTypesBase = {
   },
   TIME: {
     type: "TIME",
+    color: dateColor,
     checkDefault: (field) => {
       return /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default);
     },
@@ -396,6 +491,7 @@ const mysqlTypesBase = {
   },
   TIMESTAMP: {
     type: "TIMESTAMP",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -405,7 +501,9 @@ const mysqlTypesBase = {
       }
       const content = field.default.split(" ");
       const date = content[0].split("-");
-      return parseInt(date[0]) >= 1970 && parseInt(date[0]) <= 2038;
+      return (
+        Number.parseInt(date[0]) >= 1970 && Number.parseInt(date[0]) <= 2038
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -414,6 +512,7 @@ const mysqlTypesBase = {
   },
   DATE: {
     type: "DATE",
+    color: dateColor,
     checkDefault: (field) => {
       return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
     },
@@ -424,6 +523,7 @@ const mysqlTypesBase = {
   },
   DATETIME: {
     type: "DATETIME",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -433,7 +533,7 @@ const mysqlTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -442,6 +542,7 @@ const mysqlTypesBase = {
   },
   YEAR: {
     type: "YEAR",
+    color: dateColor,
     checkDefault: (field) => {
       return /^\d{4}$/.test(field.default);
     },
@@ -451,6 +552,7 @@ const mysqlTypesBase = {
   },
   CHAR: {
     type: "CHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -465,6 +567,7 @@ const mysqlTypesBase = {
   },
   VARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -479,6 +582,7 @@ const mysqlTypesBase = {
   },
   BINARY: {
     type: "BINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -492,6 +596,7 @@ const mysqlTypesBase = {
   },
   VARBINARY: {
     type: "VARBINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -505,6 +610,7 @@ const mysqlTypesBase = {
   },
   TINYBLOB: {
     type: "TINYBLOB",
+    color: binaryColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -513,6 +619,7 @@ const mysqlTypesBase = {
   },
   BLOB: {
     type: "BLOB",
+    color: binaryColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -521,6 +628,7 @@ const mysqlTypesBase = {
   },
   MEDIUMBLOB: {
     type: "MEDIUMBLOB",
+    color: binaryColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -529,6 +637,7 @@ const mysqlTypesBase = {
   },
   LONGBLOB: {
     type: "LONGBLOB",
+    color: binaryColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -537,6 +646,7 @@ const mysqlTypesBase = {
   },
   TINYTEXT: {
     type: "TINYTEXT",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -551,6 +661,7 @@ const mysqlTypesBase = {
   },
   TEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -565,6 +676,7 @@ const mysqlTypesBase = {
   },
   MEDIUMTEXT: {
     type: "MEDIUMTEXT",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -579,6 +691,7 @@ const mysqlTypesBase = {
   },
   LONGTEXT: {
     type: "LONGTEXT",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -593,6 +706,7 @@ const mysqlTypesBase = {
   },
   ENUM: {
     type: "ENUM",
+    color: enumSetColor,
     checkDefault: (field) => {
       return field.values.includes(field.default);
     },
@@ -603,6 +717,7 @@ const mysqlTypesBase = {
   },
   SET: {
     type: "SET",
+    color: enumSetColor,
     checkDefault: (field) => {
       const defaultValues = field.default.split(",");
       for (let i = 0; i < defaultValues.length; i++) {
@@ -617,6 +732,7 @@ const mysqlTypesBase = {
   },
   GEOMETRY: {
     type: "GEOMETRY",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -625,6 +741,7 @@ const mysqlTypesBase = {
   },
   POINT: {
     type: "POINT",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -633,6 +750,7 @@ const mysqlTypesBase = {
   },
   LINESTRING: {
     type: "LINESTRING",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -641,6 +759,7 @@ const mysqlTypesBase = {
   },
   POLYGON: {
     type: "POLYGON",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -649,6 +768,7 @@ const mysqlTypesBase = {
   },
   MULTIPOINT: {
     type: "MULTIPOINT",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -657,6 +777,7 @@ const mysqlTypesBase = {
   },
   MULTILINESTRING: {
     type: "MULTILINESTRING",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -665,6 +786,7 @@ const mysqlTypesBase = {
   },
   MULTIPOLYGON: {
     type: "MULTIPOLYGON",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -673,6 +795,7 @@ const mysqlTypesBase = {
   },
   GEOMETRYCOLLECTION: {
     type: "GEOMETRYCOLLECTION",
+    color: geometricColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -681,6 +804,7 @@ const mysqlTypesBase = {
   },
   JSON: {
     type: "JSON",
+    color: documentColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -696,6 +820,7 @@ export const mysqlTypes = new Proxy(mysqlTypesBase, {
 const postgresTypesBase = {
   SMALLINT: {
     type: "SMALLINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -707,6 +832,7 @@ const postgresTypesBase = {
   },
   INTEGER: {
     type: "INTEGER",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -724,6 +850,7 @@ const postgresTypesBase = {
   },
   BIGINT: {
     type: "BIGINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -741,6 +868,7 @@ const postgresTypesBase = {
   },
   DECIMAL: {
     type: "DECIMAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -750,6 +878,7 @@ const postgresTypesBase = {
   },
   NUMERIC: {
     type: "NUMERIC",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -759,6 +888,7 @@ const postgresTypesBase = {
   },
   REAL: {
     type: "REAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -768,6 +898,7 @@ const postgresTypesBase = {
   },
   "DOUBLE PRECISION": {
     type: "DOUBLE PRECISION",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -777,6 +908,7 @@ const postgresTypesBase = {
   },
   SMALLSERIAL: {
     type: "SMALLSERIAL",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -787,6 +919,7 @@ const postgresTypesBase = {
   },
   SERIAL: {
     type: "SERIAL",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -803,6 +936,7 @@ const postgresTypesBase = {
   },
   BIGSERIAL: {
     type: "BIGSERIAL",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -813,6 +947,7 @@ const postgresTypesBase = {
   },
   MONEY: {
     type: "MONEY",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -822,6 +957,7 @@ const postgresTypesBase = {
   },
   CHAR: {
     type: "CHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -836,6 +972,7 @@ const postgresTypesBase = {
   },
   VARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -850,6 +987,7 @@ const postgresTypesBase = {
   },
   TEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -857,13 +995,13 @@ const postgresTypesBase = {
       return field.default.length <= field.size;
     },
     hasCheck: true,
-    isSized: true,
+    isSized: false,
     hasPrecision: false,
-    defaultSize: 65535,
     hasQuotes: true,
   },
   BYTEA: {
     type: "BYTEA",
+    color: binaryColor,
     checkDefault: (field) => {
       return /^[0-9a-fA-F]*$/.test(field.default);
     },
@@ -875,8 +1013,24 @@ const postgresTypesBase = {
   },
   DATE: {
     type: "DATE",
+    color: dateColor,
     checkDefault: (field) => {
-      return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
+      const specialValues = [
+        "epoch",
+        "infinity",
+        "-infinity",
+        "now",
+        "today",
+        "tomorrow",
+        "yesterday",
+        "current_date",
+        "current_timestamp",
+        "current_time",
+      ];
+      return (
+        /^\d{4}-\d{2}-\d{2}$/.test(field.default) ||
+        specialValues.includes(field.default.toLowerCase())
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -885,8 +1039,29 @@ const postgresTypesBase = {
   },
   TIME: {
     type: "TIME",
+    color: dateColor,
     checkDefault: (field) => {
-      return /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default);
+      const specialValues = ["now", "allballs"];
+      return (
+        /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default) ||
+        specialValues.includes(field.default.toLowerCase())
+      );
+    },
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
+  TIMETZ: {
+    type: "TIMETZ",
+    color: dateColor,
+    checkDefault: (field) => {
+      const specialValues = ["now", "allballs"];
+      return (
+        /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d([+-]\d{2}:\d{2})?$/.test(
+          field.default,
+        ) || specialValues.includes(field.default.toLowerCase())
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -895,16 +1070,26 @@ const postgresTypesBase = {
   },
   TIMESTAMP: {
     type: "TIMESTAMP",
+    color: dateColor,
     checkDefault: (field) => {
-      if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
-        return true;
-      }
-      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(field.default)) {
-        return false;
-      }
       const content = field.default.split(" ");
       const date = content[0].split("-");
-      return parseInt(date[0]) >= 1970 && parseInt(date[0]) <= 2038;
+      const specialValues = [
+        "epoch",
+        "infinity",
+        "-infinity",
+        "now",
+        "today",
+        "tomorrow",
+        "yesterday",
+        "current_timestamp",
+      ];
+      return (
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(field.default) ||
+        (Number.parseInt(date[0]) >= 1970 &&
+          Number.parseInt(date[0]) <= 2038) ||
+        specialValues.includes(field.default.toLowerCase())
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -913,12 +1098,22 @@ const postgresTypesBase = {
   },
   TIMESTAMPTZ: {
     type: "TIMESTAMPTZ",
+    color: dateColor,
     checkDefault: (field) => {
-      if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
-        return true;
-      }
-      return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2})?$/.test(
-        field.default,
+      const specialValues = [
+        "epoch",
+        "infinity",
+        "-infinity",
+        "now",
+        "today",
+        "tomorrow",
+        "yesterday",
+        "current_timestamp",
+      ];
+      return (
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2})?$/.test(
+          field.default,
+        ) || specialValues.includes(field.default.toLowerCase())
       );
     },
     hasCheck: false,
@@ -928,6 +1123,7 @@ const postgresTypesBase = {
   },
   INTERVAL: {
     type: "INTERVAL",
+    color: dateColor,
     checkDefault: (field) => /^['"\d\s\\-]+$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -936,6 +1132,7 @@ const postgresTypesBase = {
   },
   BOOLEAN: {
     type: "BOOLEAN",
+    color: booleanColor,
     checkDefault: (field) => /^(true|false)$/i.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -944,6 +1141,7 @@ const postgresTypesBase = {
   },
   POINT: {
     type: "POINT",
+    color: geometricColor,
     checkDefault: (field) => /^\(\d+,\d+\)$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -952,6 +1150,7 @@ const postgresTypesBase = {
   },
   LINE: {
     type: "LINE",
+    color: geometricColor,
     checkDefault: (field) => /^(\(\d+,\d+\),)+\(\d+,\d+\)$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -960,6 +1159,7 @@ const postgresTypesBase = {
   },
   LSEG: {
     type: "LSEG",
+    color: geometricColor,
     checkDefault: (field) => /^(\(\d+,\d+\),)+\(\d+,\d+\)$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -968,6 +1168,7 @@ const postgresTypesBase = {
   },
   BOX: {
     type: "BOX",
+    color: geometricColor,
     checkDefault: (field) =>
       /^\(\d+(\.\d+)?,\d+(\.\d+)?\),\(\d+(\.\d+)?,\d+(\.\d+)?\)$/.test(
         field.default,
@@ -979,6 +1180,7 @@ const postgresTypesBase = {
   },
   PATH: {
     type: "PATH",
+    color: geometricColor,
     checkDefault: (field) =>
       /^\((\d+(\.\d+)?,\d+(\.\d+)?(,\d+(\.\d+)?,\d+(\.\d+)?)*?)\)$/.test(
         field.default,
@@ -990,6 +1192,7 @@ const postgresTypesBase = {
   },
   POLYGON: {
     type: "POLYGON",
+    color: geometricColor,
     checkDefault: (field) =>
       /^\((\d+(\.\d+)?,\d+(\.\d+)?(,\d+(\.\d+)?,\d+(\.\d+)?)*?)\)$/.test(
         field.default,
@@ -1001,6 +1204,7 @@ const postgresTypesBase = {
   },
   CIRCLE: {
     type: "CIRCLE",
+    color: geometricColor,
     checkDefault: (field) =>
       /^<\(\d+(\.\d+)?,\d+(\.\d+)?\),\d+(\.\d+)?\\>$/.test(field.default),
     hasCheck: false,
@@ -1010,6 +1214,7 @@ const postgresTypesBase = {
   },
   CIDR: {
     type: "CIDR",
+    color: networkIdColor,
     checkDefault: (field) =>
       /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(field.default),
     hasCheck: false,
@@ -1019,6 +1224,7 @@ const postgresTypesBase = {
   },
   INET: {
     type: "INET",
+    color: networkIdColor,
     checkDefault: (field) =>
       /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(field.default),
     hasCheck: false,
@@ -1028,6 +1234,7 @@ const postgresTypesBase = {
   },
   MACADDR: {
     type: "MACADDR",
+    color: networkIdColor,
     checkDefault: (field) =>
       /^([A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}$/.test(field.default),
     hasCheck: false,
@@ -1037,6 +1244,7 @@ const postgresTypesBase = {
   },
   MACADDR8: {
     type: "MACADDR8",
+    color: networkIdColor,
     checkDefault: (field) =>
       /^([A-Fa-f0-9]{2}:){7}[A-Fa-f0-9]{2}$/.test(field.default),
     hasCheck: false,
@@ -1046,6 +1254,7 @@ const postgresTypesBase = {
   },
   BIT: {
     type: "BIT",
+    color: binaryColor,
     checkDefault: (field) => /^[01]{1,}$/.test(field.default),
     hasCheck: true,
     isSized: true,
@@ -1055,6 +1264,7 @@ const postgresTypesBase = {
   },
   VARBIT: {
     type: "VARBIT",
+    color: binaryColor,
     checkDefault: (field) => /^[01]*$/.test(field.default),
     hasCheck: true,
     isSized: true,
@@ -1062,8 +1272,76 @@ const postgresTypesBase = {
     defaultSize: 1,
     hasQuotes: false,
   },
+  VECTOR: {
+    type: "VECTOR",
+    color: vectorColor,
+    checkDefault: (field) => {
+      let elements;
+      let elementsStr = field.default;
+      try {
+        if (strHasQuotes(field.default)) {
+          elementsStr = field.default.slice(1, -1);
+        }
+        elements = JSON.parse(elementsStr);
+        return (
+          Array.isArray(elements) &&
+          elements.length === field.size &&
+          elements.every(Number.isFinite)
+        );
+      } catch (e) {
+        return false;
+      }
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
+  HALFVEC: {
+    type: "HALFVEC",
+    color: vectorColor,
+    checkDefault: (field) => {
+      let elements;
+      let elementsStr = field.default;
+      try {
+        if (strHasQuotes(field.default)) {
+          elementsStr = field.default.slice(1, -1);
+        }
+        elements = JSON.parse(elementsStr);
+        return (
+          Array.isArray(elements) &&
+          elements.length === field.size &&
+          elements.every(Number.isFinite)
+        );
+      } catch (e) {
+        return false;
+      }
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
+  SPARSEVEC: {
+    type: "SPARSEVEC",
+    color: vectorColor,
+    checkDefault: (field) => {
+      let elementsStr = field.default;
+      if (strHasQuotes(field.default)) {
+        elementsStr = field.default.slice(1, -1);
+      }
+      const lengthStr = elementsStr.split("/")[1];
+      const length = Number.parseInt(lengthStr);
+      return length === field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
   TSVECTOR: {
     type: "TSVECTOR",
+    color: otherColor,
     checkDefault: (field) => /^[A-Za-z0-9: ]*$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -1072,6 +1350,7 @@ const postgresTypesBase = {
   },
   TSQUERY: {
     type: "TSQUERY",
+    color: otherColor,
     checkDefault: (field) => /^[A-Za-z0-9: &|!()]*$/.test(field.default),
     hasCheck: false,
     isSized: false,
@@ -1080,6 +1359,7 @@ const postgresTypesBase = {
   },
   JSON: {
     type: "JSON",
+    color: documentColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1089,6 +1369,7 @@ const postgresTypesBase = {
   },
   JSONB: {
     type: "JSONB",
+    color: documentColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1098,6 +1379,7 @@ const postgresTypesBase = {
   },
   UUID: {
     type: "UUID",
+    color: networkIdColor,
     checkDefault: (field) =>
       /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
         field.default,
@@ -1106,10 +1388,11 @@ const postgresTypesBase = {
     isSized: false,
     hasPrecision: false,
     hasQuotes: true,
-    noDefault: true,
+    noDefault: false,
   },
   XML: {
     type: "XML",
+    color: documentColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1126,6 +1409,7 @@ export const postgresTypes = new Proxy(postgresTypesBase, {
 const sqliteTypesBase = {
   INTEGER: {
     type: "INTEGER",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -1136,6 +1420,7 @@ const sqliteTypesBase = {
   },
   REAL: {
     type: "REAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1145,6 +1430,7 @@ const sqliteTypesBase = {
   },
   NUMERIC: {
     type: "NUMERIC",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1154,6 +1440,7 @@ const sqliteTypesBase = {
   },
   BOOLEAN: {
     type: "BOOLEAN",
+    color: booleanColor,
     checkDefault: (field) => {
       return (
         field.default.toLowerCase() === "false" ||
@@ -1168,6 +1455,7 @@ const sqliteTypesBase = {
   },
   VARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -1182,6 +1470,7 @@ const sqliteTypesBase = {
   },
   TEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => true,
     hasCheck: true,
     isSized: true,
@@ -1191,6 +1480,7 @@ const sqliteTypesBase = {
   },
   BLOB: {
     type: "BLOB",
+    color: binaryColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -1199,6 +1489,7 @@ const sqliteTypesBase = {
   },
   TIME: {
     type: "TIME",
+    color: dateColor,
     checkDefault: (field) => {
       return /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default);
     },
@@ -1209,6 +1500,7 @@ const sqliteTypesBase = {
   },
   TIMESTAMP: {
     type: "TIMESTAMP",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1218,7 +1510,9 @@ const sqliteTypesBase = {
       }
       const content = field.default.split(" ");
       const date = content[0].split("-");
-      return parseInt(date[0]) >= 1970 && parseInt(date[0]) <= 2038;
+      return (
+        Number.parseInt(date[0]) >= 1970 && Number.parseInt(date[0]) <= 2038
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -1227,6 +1521,7 @@ const sqliteTypesBase = {
   },
   DATE: {
     type: "DATE",
+    color: dateColor,
     checkDefault: (field) => {
       return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
     },
@@ -1237,6 +1532,7 @@ const sqliteTypesBase = {
   },
   DATETIME: {
     type: "DATETIME",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1246,7 +1542,7 @@ const sqliteTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -1262,6 +1558,7 @@ export const sqliteTypes = new Proxy(sqliteTypesBase, {
 const mssqlTypesBase = {
   TINYINT: {
     type: "TINYINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -1272,6 +1569,7 @@ const mssqlTypesBase = {
   },
   SMALLINT: {
     type: "SMALLINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -1282,6 +1580,7 @@ const mssqlTypesBase = {
   },
   INTEGER: {
     type: "INTEGER",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -1292,6 +1591,7 @@ const mssqlTypesBase = {
   },
   BIGINT: {
     type: "BIGINT",
+    color: intColor,
     checkDefault: (field) => {
       return intRegex.test(field.default);
     },
@@ -1302,6 +1602,7 @@ const mssqlTypesBase = {
   },
   BIT: {
     type: "BIT",
+    color: binaryColor,
     checkDefault: (field) => {
       return field.default === "1" || field.default === "0";
     },
@@ -1311,6 +1612,7 @@ const mssqlTypesBase = {
   },
   DECIMAL: {
     type: "DECIMAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1320,6 +1622,7 @@ const mssqlTypesBase = {
   },
   NUMERIC: {
     type: "NUMERIC",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1329,6 +1632,7 @@ const mssqlTypesBase = {
   },
   FLOAT: {
     type: "FLOAT",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1338,6 +1642,7 @@ const mssqlTypesBase = {
   },
   DOUBLE: {
     type: "DOUBLE",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1347,6 +1652,7 @@ const mssqlTypesBase = {
   },
   REAL: {
     type: "REAL",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1356,6 +1662,7 @@ const mssqlTypesBase = {
   },
   MONEY: {
     type: "MONEY",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1365,6 +1672,7 @@ const mssqlTypesBase = {
   },
   SMALLMONEY: {
     type: "MONEY",
+    color: decimalColor,
     checkDefault: (field) => {
       return doubleRegex.test(field.default);
     },
@@ -1374,6 +1682,7 @@ const mssqlTypesBase = {
   },
   DATE: {
     type: "DATE",
+    color: dateColor,
     checkDefault: (field) => {
       return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
     },
@@ -1384,6 +1693,7 @@ const mssqlTypesBase = {
   },
   DATETIME: {
     type: "DATETIME",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1393,7 +1703,7 @@ const mssqlTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -1402,6 +1712,7 @@ const mssqlTypesBase = {
   },
   DATETIME2: {
     type: "DATETIME2",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1411,7 +1722,7 @@ const mssqlTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -1420,6 +1731,7 @@ const mssqlTypesBase = {
   },
   DATETIMEOFFSET: {
     type: "DATETIMEOFFSET",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1433,7 +1745,7 @@ const mssqlTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1000 && parseInt(d[0]) <= 9999;
+      return Number.parseInt(d[0]) >= 1000 && Number.parseInt(d[0]) <= 9999;
     },
     hasCheck: false,
     isSized: false,
@@ -1442,6 +1754,7 @@ const mssqlTypesBase = {
   },
   SMALLDATETIME: {
     type: "SMALLDATETIME",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1451,7 +1764,7 @@ const mssqlTypesBase = {
       }
       const c = field.default.split(" ");
       const d = c[0].split("-");
-      return parseInt(d[0]) >= 1900 && parseInt(d[0]) <= 2079;
+      return Number.parseInt(d[0]) >= 1900 && Number.parseInt(d[0]) <= 2079;
     },
     hasCheck: false,
     isSized: false,
@@ -1460,6 +1773,7 @@ const mssqlTypesBase = {
   },
   TIME: {
     type: "TIME",
+    color: dateColor,
     checkDefault: (field) => {
       return /^(?:[01]?\d|2[0-3]):[0-5]?\d:[0-5]?\d$/.test(field.default);
     },
@@ -1470,6 +1784,7 @@ const mssqlTypesBase = {
   },
   TIMESTAMP: {
     type: "TIMESTAMP",
+    color: dateColor,
     checkDefault: (field) => {
       if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
         return true;
@@ -1479,7 +1794,9 @@ const mssqlTypesBase = {
       }
       const content = field.default.split(" ");
       const date = content[0].split("-");
-      return parseInt(date[0]) >= 1970 && parseInt(date[0]) <= 2038;
+      return (
+        Number.parseInt(date[0]) >= 1970 && Number.parseInt(date[0]) <= 2038
+      );
     },
     hasCheck: false,
     isSized: false,
@@ -1488,6 +1805,7 @@ const mssqlTypesBase = {
   },
   CHAR: {
     type: "CHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -1502,6 +1820,7 @@ const mssqlTypesBase = {
   },
   VARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -1516,6 +1835,7 @@ const mssqlTypesBase = {
   },
   TEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: true,
@@ -1525,6 +1845,7 @@ const mssqlTypesBase = {
   },
   NCHAR: {
     type: "CHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -1539,6 +1860,7 @@ const mssqlTypesBase = {
   },
   NVARCHAR: {
     type: "VARCHAR",
+    color: stringColor,
     checkDefault: (field) => {
       if (strHasQuotes(field.default)) {
         return field.default.length - 2 <= field.size;
@@ -1553,6 +1875,7 @@ const mssqlTypesBase = {
   },
   NTEXT: {
     type: "TEXT",
+    color: stringColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: true,
@@ -1562,6 +1885,7 @@ const mssqlTypesBase = {
   },
   BINARY: {
     type: "BINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -1575,6 +1899,7 @@ const mssqlTypesBase = {
   },
   VARBINARY: {
     type: "VARBINARY",
+    color: binaryColor,
     checkDefault: (field) => {
       return (
         field.default.length <= field.size && binaryRegex.test(field.default)
@@ -1588,6 +1913,7 @@ const mssqlTypesBase = {
   },
   IMAGE: {
     type: "IMAGE",
+    color: binaryColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1597,6 +1923,7 @@ const mssqlTypesBase = {
   },
   UNIQUEIDENTIFIER: {
     type: "UNIQUEIDENTIFIER",
+    color: networkIdColor,
     checkDefault: (field) => true,
     isSized: false,
     hasCheck: false,
@@ -1605,6 +1932,7 @@ const mssqlTypesBase = {
   },
   XML: {
     type: "XML",
+    color: documentColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1614,6 +1942,7 @@ const mssqlTypesBase = {
   },
   CURSOR: {
     type: "CURSOR",
+    color: otherColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1623,6 +1952,7 @@ const mssqlTypesBase = {
   },
   SQL_VARIANT: {
     type: "SQL_VARIANT",
+    color: otherColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1632,6 +1962,7 @@ const mssqlTypesBase = {
   },
   JSON: {
     type: "JSON",
+    color: documentColor,
     checkDefault: (field) => true,
     hasCheck: false,
     isSized: false,
@@ -1645,13 +1976,282 @@ export const mssqlTypes = new Proxy(mssqlTypesBase, {
   get: (target, prop) => (prop in target ? target[prop] : false),
 });
 
+const oraclesqlTypesBase = {
+  INTEGER: {
+    type: "INTEGER",
+    color: intColor,
+    checkDefault: (field) => {
+      return intRegex.test(field.default);
+    },
+    hasCheck: true,
+    isSized: false,
+    hasPrecision: false,
+    canIncrement: true,
+  },
+  NUMBER: {
+    type: "NUMBER",
+    color: decimalColor,
+    checkDefault: (field) => {
+      return /^-?\d+(\.\d+)?$/.test(field.default);
+    },
+    hasCheck: true,
+    isSized: false,
+    hasPrecision: true,
+    canIncrement: false,
+  },
+  FLOAT: {
+    type: "FLOAT",
+    color: decimalColor,
+    checkDefault: (field) => {
+      return /^-?\d+(\.\d+)?$/.test(field.default);
+    },
+    hasCheck: true,
+    isSized: false,
+    hasPrecision: true,
+  },
+  LONG: {
+    type: "LONG",
+    color: intColor,
+    checkDefault: (field) => {
+      return intRegex.test(field.default);
+    },
+    hasCheck: true,
+    isSized: false,
+    hasPrecision: false,
+    canIncrement: true,
+  },
+  VARCHAR2: {
+    type: "VARCHAR2",
+    color: stringColor,
+    checkDefault: (field) => {
+      if (strHasQuotes(field.default)) {
+        return field.default.length - 2 <= field.size;
+      }
+      return field.default.length <= field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 255,
+    hasQuotes: true,
+  },
+  NVARCHAR2: {
+    type: "VARCHAR2",
+    color: stringColor,
+    checkDefault: (field) => {
+      if (strHasQuotes(field.default)) {
+        return field.default.length - 2 <= field.size;
+      }
+      return field.default.length <= field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 255,
+    hasQuotes: true,
+  },
+  CHAR: {
+    type: "CHAR",
+    color: stringColor,
+    checkDefault: (field) => {
+      if (strHasQuotes(field.default)) {
+        return field.default.length - 2 <= field.size;
+      }
+      return field.default.length <= field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 1,
+    hasQuotes: true,
+  },
+  NCHAR: {
+    type: "NCHAR",
+    color: stringColor,
+    checkDefault: (field) => {
+      if (strHasQuotes(field.default)) {
+        return field.default.length - 2 <= field.size;
+      }
+      return field.default.length <= field.size;
+    },
+    hasCheck: true,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 1,
+    hasQuotes: true,
+  },
+  CLOB: {
+    type: "CLOB",
+    color: stringColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  NCLOB: {
+    type: "NCLOB",
+    color: stringColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  BLOB: {
+    type: "BLOB",
+    color: binaryColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  BFILE: {
+    type: "BFILE",
+    color: otherColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  JSON: {
+    type: "JSON",
+    color: documentColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  VECTOR: {
+    type: "VECTOR",
+    color: vectorColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: false,
+    hasPrecision: false,
+    noDefault: true,
+  },
+  DATE: {
+    type: "DATE",
+    color: dateColor,
+    checkDefault: (field) => {
+      return /^\d{4}-\d{2}-\d{2}$/.test(field.default);
+    },
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
+  TIMESTAMP: {
+    type: "TIMESTAMP",
+    color: dateColor,
+    checkDefault: (field) => {
+      if (field.default.toUpperCase() === "CURRENT_TIMESTAMP") {
+        return true;
+      }
+      return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(
+        field.default,
+      );
+    },
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: true,
+    hasQuotes: true,
+  },
+  INTERVAL: {
+    type: "INTERVAL",
+    color: dateColor,
+    checkDefault: (field) => {
+      return /^INTERVAL\s'\d+'(\s+DAY|HOUR|MINUTE|SECOND)?$/.test(
+        field.default,
+      );
+    },
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
+  BOOLEAN: {
+    type: "BOOLEAN",
+    color: booleanColor,
+    checkDefault: (field) => {
+      return (
+        field.default === "0" ||
+        field.default === "1" ||
+        field.default.toUpperCase() === "TRUE" ||
+        field.default.toUpperCase() === "FALSE"
+      );
+    },
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: false,
+  },
+  RAW: {
+    type: "RAW",
+    color: binaryColor,
+    checkDefault: (field) => {
+      return /^[0-9A-Fa-f]+$/.test(field.default);
+    },
+    hasCheck: false,
+    isSized: true,
+    hasPrecision: false,
+    defaultSize: 255,
+    hasQuotes: false,
+  },
+};
+
+export const oraclesqlTypes = new Proxy(oraclesqlTypesBase, {
+  get: (target, prop) => (prop in target ? target[prop] : false),
+});
+
+export const mariadbTypesBase = {
+  UUID: {
+    type: "UUID",
+    color: networkIdColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: true,
+    hasPrecision: false,
+    noDefault: false,
+  },
+  INET4: {
+    type: "INET4",
+    color: networkIdColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: true,
+    hasPrecision: false,
+    noDefault: false,
+  },
+  INET6: {
+    type: "INET6",
+    color: networkIdColor,
+    checkDefault: (field) => true,
+    isSized: false,
+    hasCheck: true,
+    hasPrecision: false,
+    noDefault: false,
+  },
+};
+
+export const mariadbTypes = new Proxy(
+  { ...mysqlTypes, ...mariadbTypesBase },
+  {
+    get: (target, prop) => (prop in target ? target[prop] : false),
+  },
+);
+
 const dbToTypesBase = {
   [DB.GENERIC]: defaultTypes,
   [DB.MYSQL]: mysqlTypes,
   [DB.POSTGRES]: postgresTypes,
   [DB.SQLITE]: sqliteTypes,
   [DB.MSSQL]: mssqlTypes,
-  [DB.MARIADB]: mysqlTypes,
+  [DB.MARIADB]: mariadbTypes,
+  [DB.ORACLESQL]: oraclesqlTypes,
 };
 
 export const dbToTypes = new Proxy(dbToTypesBase, {

@@ -1,11 +1,11 @@
 import {
-  Collapse,
   Row,
   Col,
   Select,
   Button,
   Popover,
   Table,
+  Input,
 } from "@douyinfe/semi-ui";
 import {
   IconDeleteStroked,
@@ -18,9 +18,10 @@ import {
   Action,
   ObjectType,
 } from "../../../data/constants";
-import { useDiagram, useUndoRedo } from "../../../hooks";
+import { useDiagram, useLayout, useUndoRedo } from "../../../hooks";
 import i18n from "../../../i18n/i18n";
 import { useTranslation } from "react-i18next";
+import { useMemo, useState } from "react";
 
 const columns = [
   {
@@ -35,8 +36,31 @@ const columns = [
 
 export default function RelationshipInfo({ data }) {
   const { setUndoStack, setRedoStack } = useUndoRedo();
-  const { tables, setRelationships, deleteRelationship } = useDiagram();
+  const { tables, deleteRelationship, updateRelationship } = useDiagram();
   const { t } = useTranslation();
+  const { layout } = useLayout();
+  const [editField, setEditField] = useState({});
+
+  const relValues = useMemo(() => {
+    const { fields: startTableFields, name: startTableName } = tables.find(
+      (t) => t.id === data.startTableId,
+    );
+    const { name: startFieldName } = startTableFields.find(
+      (f) => f.id === data.startFieldId,
+    );
+    const { fields: endTableFields, name: endTableName } = tables.find(
+      (t) => t.id === data.endTableId,
+    );
+    const { name: endFieldName } = endTableFields.find(
+      (f) => f.id === data.endFieldId,
+    );
+    return {
+      startTableName,
+      startFieldName,
+      endTableName,
+      endFieldName,
+    };
+  }, [tables, data]);
 
   const swapKeys = () => {
     setUndoStack((prev) => [
@@ -64,25 +88,19 @@ export default function RelationshipInfo({ data }) {
       },
     ]);
     setRedoStack([]);
-    setRelationships((prev) =>
-      prev.map((e, idx) =>
-        idx === data.id
-          ? {
-              ...e,
-              name: `${tables[e.startTableId].name}_${
-                tables[e.startTableId].fields[e.startFieldId].name
-              }_fk`,
-              startTableId: e.endTableId,
-              startFieldId: e.endFieldId,
-              endTableId: e.startTableId,
-              endFieldId: e.startFieldId,
-            }
-          : e,
-      ),
-    );
+
+    updateRelationship(data.id, {
+      name: `fk_${relValues.endTableName}_${relValues.endFieldName}_${relValues.startTableName}`,
+      startTableId: data.endTableId,
+      startFieldId: data.endFieldId,
+      endTableId: data.startTableId,
+      endFieldId: data.startFieldId,
+    });
   };
 
   const changeCardinality = (value) => {
+    if (layout.readOnly) return;
+
     setUndoStack((prev) => [
       ...prev,
       {
@@ -98,14 +116,12 @@ export default function RelationshipInfo({ data }) {
       },
     ]);
     setRedoStack([]);
-    setRelationships((prev) =>
-      prev.map((e, idx) =>
-        idx === data.id ? { ...e, cardinality: value } : e,
-      ),
-    );
+    updateRelationship(data.id, { cardinality: value });
   };
 
   const changeConstraint = (key, value) => {
+    if (layout.readOnly) return;
+
     const undoKey = `${key}Constraint`;
     setUndoStack((prev) => [
       ...prev,
@@ -122,116 +138,168 @@ export default function RelationshipInfo({ data }) {
       },
     ]);
     setRedoStack([]);
-    setRelationships((prev) =>
-      prev.map((e, idx) => (idx === data.id ? { ...e, [undoKey]: value } : e)),
-    );
+    updateRelationship(data.id, { [undoKey]: value });
   };
 
   return (
-    <div id={`scroll_ref_${data.id}`}>
-      <Collapse.Panel
-        header={
-          <div className="overflow-hidden text-ellipsis whitespace-nowrap">
-            {data.name}
-          </div>
-        }
-        itemKey={`${data.id}`}
-      >
-        <div className="flex justify-between items-center mb-3">
-          <div className="me-3">
-            <span className="font-semibold">{t("primary")}: </span>
-            {tables[data.endTableId].name}
-          </div>
-          <div className="mx-1">
-            <span className="font-semibold">{t("foreign")}: </span>
-            {tables[data.startTableId].name}
-          </div>
-          <div className="ms-1">
-            <Popover
-              content={
-                <div className="p-2 popover-theme">
-                  <Table
-                    columns={columns}
-                    dataSource={[
-                      {
-                        key: "1",
-                        foreign: `${tables[data.startTableId].name}(${
-                          tables[data.startTableId].fields[data.startFieldId]
-                            .name
-                        })`,
-                        primary: `${tables[data.endTableId].name}(${
-                          tables[data.endTableId].fields[data.endFieldId].name
-                        })`,
-                      },
-                    ]}
-                    pagination={false}
-                    size="small"
-                    bordered
-                  />
-                  <div className="mt-2">
-                    <Button
-                      icon={<IconLoopTextStroked />}
-                      block
-                      onClick={swapKeys}
-                    >
-                      {t("swap")}
-                    </Button>
-                  </div>
-                </div>
-              }
-              trigger="click"
-              position="rightTop"
-              showArrow
-            >
-              <Button icon={<IconMore />} type="tertiary" />
-            </Popover>
-          </div>
-        </div>
-        <div className="font-semibold my-1">{t("cardinality")}:</div>
-        <Select
-          optionList={Object.values(Cardinality).map((v) => ({
-            label: v,
-            value: v,
-          }))}
-          value={data.cardinality}
-          className="w-full"
-          onChange={changeCardinality}
+    <>
+      <div className="flex items-center mb-2.5">
+        <div className="text-md font-semibold break-keep">{t("name")}: </div>
+        <Input
+          value={data.name}
+          validateStatus={data.name.trim() === "" ? "error" : "default"}
+          placeholder={t("name")}
+          className="ms-2"
+          readonly={layout.readOnly}
+          onChange={(value) => updateRelationship(data.id, { name: value })}
+          onFocus={(e) => setEditField({ name: e.target.value })}
+          onBlur={(e) => {
+            if (e.target.value === editField.name) return;
+            setUndoStack((prev) => [
+              ...prev,
+              {
+                action: Action.EDIT,
+                element: ObjectType.RELATIONSHIP,
+                component: "self",
+                rid: data.id,
+                undo: editField,
+                redo: { name: e.target.value },
+                message: t("edit_relationship", {
+                  refName: e.target.value,
+                  extra: "[name]",
+                }),
+              },
+            ]);
+            setRedoStack([]);
+          }}
         />
-        <Row gutter={6} className="my-3">
-          <Col span={12}>
-            <div className="font-semibold">{t("on_update")}: </div>
-            <Select
-              optionList={Object.values(Constraint).map((v) => ({
-                label: v,
-                value: v,
-              }))}
-              value={data.updateConstraint}
-              className="w-full"
-              onChange={(value) => changeConstraint("update", value)}
-            />
-          </Col>
-          <Col span={12}>
-            <div className="font-semibold">{t("on_delete")}: </div>
-            <Select
-              optionList={Object.values(Constraint).map((v) => ({
-                label: v,
-                value: v,
-              }))}
-              value={data.deleteConstraint}
-              className="w-full"
-              onChange={(value) => changeConstraint("delete", value)}
-            />
-          </Col>
-        </Row>
-        <Button
-          icon={<IconDeleteStroked />}
-          block
-          type="danger"
-          onClick={() => deleteRelationship(data.id)}
-        >
-          {t("delete")}
-        </Button>
-      </Collapse.Panel>
-    </div>
+      </div>
+      <div className="flex justify-between items-center mb-3">
+        <div className="me-3">
+          <span className="font-semibold">{t("primary")}: </span>
+          {relValues.endTableName}
+        </div>
+        <div className="mx-1">
+          <span className="font-semibold">{t("foreign")}: </span>
+          {relValues.startTableName}
+        </div>
+        <div className="ms-1">
+          <Popover
+            content={
+              <div className="p-2 popover-theme">
+                <Table
+                  columns={columns}
+                  dataSource={[
+                    {
+                      key: "1",
+                      foreign: `${relValues.startTableName}(${relValues.startFieldName})`,
+                      primary: `${relValues.endTableName}(${relValues.endFieldName})`,
+                    },
+                  ]}
+                  pagination={false}
+                  size="small"
+                  bordered
+                />
+                <div className="mt-2">
+                  <Button
+                    block
+                    icon={<IconLoopTextStroked />}
+                    onClick={swapKeys}
+                    disabled={layout.readOnly}
+                  >
+                    {t("swap")}
+                  </Button>
+                </div>
+              </div>
+            }
+            trigger="click"
+            position="rightTop"
+            showArrow
+          >
+            <Button icon={<IconMore />} type="tertiary" />
+          </Popover>
+        </div>
+      </div>
+      <div className="font-semibold my-1">{t("cardinality")}:</div>
+      <Select
+        optionList={Object.values(Cardinality).map((v) => ({
+          label: t(v),
+          value: v,
+        }))}
+        value={data.cardinality}
+        className="w-full"
+        onChange={changeCardinality}
+      />
+
+      {data.cardinality !== Cardinality.ONE_TO_ONE && (
+        <>
+          <div className="text-md font-semibold break-keep mt-2">
+            {t("many_side_label")}:
+          </div>
+          <Input
+            value={data.manyLabel}
+            placeholder={t("label")}
+            onChange={(value) => updateRelationship(data.id, { manyLabel: value })}
+            onFocus={(e) => setEditField({ manyLabel: e.target.value })}
+            readonly={layout.readOnly}
+            onBlur={(e) => {
+              if (e.target.value === editField.manyLabel) return;
+              setUndoStack((prev) => [
+                ...prev,
+                {
+                  action: Action.EDIT,
+                  element: ObjectType.RELATIONSHIP,
+                  component: "self",
+                  rid: data.id,
+                  undo: editField,
+                  redo: { manyLabel: e.target.value },
+                  message: t("edit_relationship", {
+                    refName: e.target.value,
+                    extra: "[manyLabel]",
+                  }),
+                },
+              ]);
+              setRedoStack([]);
+            }}
+          />
+        </>
+      )}
+
+      <Row gutter={6} className="my-3">
+        <Col span={12}>
+          <div className="font-semibold">{t("on_update")}: </div>
+          <Select
+            optionList={Object.values(Constraint).map((v) => ({
+              label: v,
+              value: v,
+            }))}
+            value={data.updateConstraint}
+            className="w-full"
+            onChange={(value) => changeConstraint("update", value)}
+          />
+        </Col>
+        <Col span={12}>
+          <div className="font-semibold">{t("on_delete")}: </div>
+          <Select
+            optionList={Object.values(Constraint).map((v) => ({
+              label: v,
+              value: v,
+            }))}
+            value={data.deleteConstraint}
+            className="w-full"
+            onChange={(value) => changeConstraint("delete", value)}
+          />
+        </Col>
+      </Row>
+      <Button
+        block
+        type="danger"
+        disabled={layout.readOnly}
+        icon={<IconDeleteStroked />}
+        onClick={() => deleteRelationship(data.id)}
+      >
+        {t("delete")}
+      </Button>
+    </>
   );
 }

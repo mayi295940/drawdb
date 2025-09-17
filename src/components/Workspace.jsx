@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext } from "react";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import Canvas from "./EditorCanvas/Canvas";
 import { CanvasContextProvider } from "../context/CanvasContext";
@@ -19,20 +19,36 @@ import {
   useEnums,
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
-import { Modal } from "@douyinfe/semi-ui";
+import { Button, Modal, Tag } from "@douyinfe/semi-ui";
+import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import { useTranslation } from "react-i18next";
 import { databases } from "../data/databases";
 import { isRtl } from "../i18n/utils/rtl";
+import { useSearchParams } from "react-router-dom";
+import { get, SHARE_FILENAME } from "../api/gists";
+
+export const IdContext = createContext({
+  gistId: "",
+  setGistId: () => {},
+  version: "",
+  setVersion: () => {},
+});
+
+const SIDEPANEL_MIN_WIDTH = 384;
 
 export default function WorkSpace() {
   const [id, setId] = useState(0);
+  const [gistId, setGistId] = useState("");
+  const [version, setVersion] = useState("");
+  const [loadedFromGistId, setLoadedFromGistId] = useState("");
   const [title, setTitle] = useState("Untitled Diagram");
   const [resize, setResize] = useState(false);
-  const [width, setWidth] = useState(340);
+  const [width, setWidth] = useState(SIDEPANEL_MIN_WIDTH);
   const [lastSaved, setLastSaved] = useState("");
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
-  const { layout } = useLayout();
+  const { layout, setLayout } = useLayout();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
   const { areas, setAreas } = useAreas();
@@ -51,11 +67,11 @@ export default function WorkSpace() {
   } = useDiagram();
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
   const { t, i18n } = useTranslation();
-
+  let [searchParams, setSearchParams] = useSearchParams();
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;
-    if (w > 340) setWidth(w);
+    if (w > SIDEPANEL_MIN_WIDTH) setWidth(w);
   };
 
   const save = useCallback(async () => {
@@ -64,14 +80,14 @@ export default function WorkSpace() {
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
 
     if (saveAsDiagram) {
-      if (
-        (id === 0 && window.name === "") ||
-        window.name.split(" ")[0] === "lt"
-      ) {
+      searchParams.delete("shareId");
+      setSearchParams(searchParams);
+      if ((id === 0 && window.name === "") || op === "lt") {
         await db.diagrams
           .add({
             database: database,
             name: title,
+            gistId: gistId ?? "",
             lastModified: new Date(),
             tables: tables,
             references: relationships,
@@ -80,6 +96,7 @@ export default function WorkSpace() {
             todos: tasks,
             pan: transform.pan,
             zoom: transform.zoom,
+            loadedFromGistId: loadedFromGistId,
             ...(databases[database].hasEnums && { enums: enums }),
             ...(databases[database].hasTypes && { types: types }),
           })
@@ -100,8 +117,10 @@ export default function WorkSpace() {
             notes: notes,
             areas: areas,
             todos: tasks,
+            gistId: gistId ?? "",
             pan: transform.pan,
             zoom: transform.zoom,
+            loadedFromGistId: loadedFromGistId,
             ...(databases[database].hasEnums && { enums: enums }),
             ...(databases[database].hasTypes && { types: types }),
           })
@@ -134,6 +153,8 @@ export default function WorkSpace() {
         });
     }
   }, [
+    searchParams,
+    setSearchParams,
     tables,
     relationships,
     notes,
@@ -146,6 +167,8 @@ export default function WorkSpace() {
     setSaveState,
     database,
     enums,
+    gistId,
+    loadedFromGistId,
   ]);
 
   const load = useCallback(async () => {
@@ -161,6 +184,8 @@ export default function WorkSpace() {
               setDatabase(DB.GENERIC);
             }
             setId(d.id);
+            setGistId(d.gistId);
+            setLoadedFromGistId(d.loadedFromGistId);
             setTitle(d.name);
             setTables(d.tables);
             setRelationships(d.references);
@@ -196,6 +221,8 @@ export default function WorkSpace() {
               setDatabase(DB.GENERIC);
             }
             setId(diagram.id);
+            setGistId(diagram.gistId);
+            setLoadedFromGistId(diagram.loadedFromGistId);
             setTitle(diagram.name);
             setTables(diagram.tables);
             setRelationships(diagram.references);
@@ -263,20 +290,64 @@ export default function WorkSpace() {
         });
     };
 
+    const loadFromGist = async (shareId) => {
+      try {
+        const { data } = await get(shareId);
+        const parsedDiagram = JSON.parse(data.files[SHARE_FILENAME].content);
+        setUndoStack([]);
+        setRedoStack([]);
+        setGistId(shareId);
+        setLoadedFromGistId(shareId);
+        setDatabase(parsedDiagram.database);
+        setTitle(parsedDiagram.title);
+        setTables(parsedDiagram.tables);
+        setRelationships(parsedDiagram.relationships);
+        setNotes(parsedDiagram.notes);
+        setAreas(parsedDiagram.subjectAreas);
+        setTransform(parsedDiagram.transform);
+        if (databases[parsedDiagram.database].hasTypes) {
+          setTypes(parsedDiagram.types ?? []);
+        }
+        if (databases[parsedDiagram.database].hasEnums) {
+          setEnums(parsedDiagram.enums ?? []);
+        }
+      } catch (e) {
+        console.log(e);
+        setSaveState(State.FAILED_TO_LOAD);
+      }
+    };
+
+    const shareId = searchParams.get("shareId");
+    if (shareId) {
+      const existingDiagram = await db.diagrams.get({
+        loadedFromGistId: shareId,
+      });
+
+      if (existingDiagram) {
+        window.name = "d " + existingDiagram.id;
+        setId(existingDiagram.id);
+      } else {
+        window.name = "";
+        setId(0);
+      }
+      await loadFromGist(shareId);
+      return;
+    }
+
     if (window.name === "") {
-      loadLatestDiagram();
+      await loadLatestDiagram();
     } else {
       const name = window.name.split(" ");
       const op = name[0];
       const id = parseInt(name[1]);
       switch (op) {
         case "d": {
-          loadDiagram(id);
+          await loadDiagram(id);
           break;
         }
         case "t":
         case "lt": {
-          loadTemplate(id);
+          await loadTemplate(id);
           break;
         }
         default:
@@ -297,7 +368,15 @@ export default function WorkSpace() {
     database,
     setEnums,
     selectedDb,
+    setSaveState,
+    searchParams,
   ]);
+
+  const returnToCurrentDiagram = async () => {
+    await load();
+    setLayout((prev) => ({ ...prev, readOnly: false }));
+    setVersion(null);
+  };
 
   useEffect(() => {
     if (
@@ -324,14 +403,17 @@ export default function WorkSpace() {
     tasks?.length,
     transform.zoom,
     title,
+    gistId,
     setSaveState,
   ]);
 
   useEffect(() => {
+    if (layout.readOnly) return;
+
     if (saveState !== State.SAVING) return;
 
     save();
-  }, [id, saveState, save]);
+  }, [saveState, layout, save]);
 
   useEffect(() => {
     document.title = "Editor | drawDB";
@@ -341,14 +423,16 @@ export default function WorkSpace() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden theme">
-      <ControlPanel
-        diagramId={id}
-        setDiagramId={setId}
-        title={title}
-        setTitle={setTitle}
-        lastSaved={lastSaved}
-        setLastSaved={setLastSaved}
-      />
+      <IdContext.Provider value={{ gistId, setGistId, version, setVersion }}>
+        <ControlPanel
+          diagramId={id}
+          setDiagramId={setId}
+          title={title}
+          setTitle={setTitle}
+          lastSaved={lastSaved}
+          setLastSaved={setLastSaved}
+        />
+      </IdContext.Provider>
       <div
         className="flex h-full overflow-y-auto"
         onPointerUp={(e) => e.isPrimary && setResize(false)}
@@ -368,6 +452,23 @@ export default function WorkSpace() {
           <CanvasContextProvider className="h-full w-full">
             <Canvas saveState={saveState} setSaveState={setSaveState} />
           </CanvasContextProvider>
+          {version && (
+            <div className="absolute right-8 top-2 space-x-2">
+              <Button
+                icon={<i className="fa-solid fa-rotate-right mt-0.5"></i>}
+                onClick={() => setShowRestoreModal(true)}
+              >
+                {t("restore_version")}
+              </Button>
+              <Button
+                type="tertiary"
+                onClick={returnToCurrentDiagram}
+                icon={<i className="bi bi-arrow-return-right mt-1"></i>}
+              >
+                {t("return_to_current")}
+              </Button>
+            </div>
+          )}
           {!(layout.sidebar || layout.toolbar || layout.header) && (
             <div className="fixed right-5 bottom-4">
               <FloatingControls />
@@ -395,17 +496,24 @@ export default function WorkSpace() {
             <div
               key={x.name}
               onClick={() => setSelectedDb(x.label)}
-              className={`space-y-3 py-3 px-4 rounded-md border-2 select-none ${
+              className={`space-y-3 p-3 rounded-md border-2 select-none ${
                 settings.mode === "dark"
                   ? "bg-zinc-700 hover:bg-zinc-600"
                   : "bg-zinc-100 hover:bg-zinc-200"
               } ${selectedDb === x.label ? "border-zinc-400" : "border-transparent"}`}
             >
-              <div className="font-semibold">{x.name}</div>
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">{x.name}</div>
+                {x.beta && (
+                  <Tag size="small" color="light-blue">
+                    Beta
+                  </Tag>
+                )}
+              </div>
               {x.image && (
                 <img
                   src={x.image}
-                  className="h-10"
+                  className="h-8"
                   style={{
                     filter:
                       "opacity(0.4) drop-shadow(0 0 0 white) drop-shadow(0 0 0 white)",
@@ -416,6 +524,27 @@ export default function WorkSpace() {
             </div>
           ))}
         </div>
+      </Modal>
+      <Modal
+        visible={showRestoreModal}
+        centered
+        closable
+        onCancel={() => setShowRestoreModal(false)}
+        title={
+          <span className="flex items-center gap-2">
+            <IconAlertTriangle className="text-amber-400" size="extra-large" />{" "}
+            {t("restore_version")}
+          </span>
+        }
+        okText={t("continue")}
+        cancelText={t("cancel")}
+        onOk={() => {
+          setLayout((prev) => ({ ...prev, readOnly: false }));
+          setShowRestoreModal(false);
+          setVersion(null);
+        }}
+      >
+        {t("restore_warning")}
       </Modal>
     </div>
   );

@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { Cardinality, DB } from "../../data/constants";
 import { dbToTypes } from "../../data/datatypes";
 import { buildSQLFromAST } from "./shared";
@@ -9,7 +10,7 @@ const affinity = {
   ),
   [DB.GENERIC]: new Proxy(
     {
-      INT: "INTEGER",
+      INTEGER: "INT",
       TINYINT: "SMALLINT",
       MEDIUMINT: "INTEGER",
       BIT: "BOOLEAN",
@@ -44,10 +45,11 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
         table.color = "#175e7a";
         table.fields = [];
         table.indices = [];
-        table.id = tables.length;
+        table.id = nanoid();
         e.create_definitions.forEach((d) => {
           if (d.resource === "column") {
             const field = {};
+            field.id = nanoid();
             field.name = d.column.column;
 
             let type = d.definition.dataType;
@@ -117,32 +119,32 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
                   }
                 });
               });
-            } else if (d.constraint_type === "FOREIGN KEY") {
+            } else if (d.constraint_type.toLowerCase() === "foreign key") {
               const relationship = {};
               const startTableId = table.id;
-              const startTable = e.table[0].table;
-              const startField = d.definition[0].column;
-              const endTable = d.reference_definition.table[0].table;
-              const endField = d.reference_definition.definition[0].column;
+              const startTableName = e.table[0].table;
+              const startFieldName = d.definition[0].column;
+              const endTableName = d.reference_definition.table[0].table;
+              const endFieldName = d.reference_definition.definition[0].column;
 
-              const endTableId = tables.findIndex((t) => t.name === endTable);
-              if (endTableId === -1) return;
+              const endTable = tables.find((t) => t.name === endTableName);
+              if (!endTable) return;
 
-              const endFieldId = tables[endTableId].fields.findIndex(
-                (f) => f.name === endField,
+              const endField = endTable.fields.find(
+                (f) => f.name === endFieldName,
               );
-              if (endField === -1) return;
+              if (!endField) return;
 
-              const startFieldId = table.fields.findIndex(
-                (f) => f.name === startField,
+              const startField = table.fields.find(
+                (f) => f.name === startFieldName,
               );
-              if (startFieldId === -1) return;
+              if (!startField) return;
 
-              relationship.name = startTable + "_" + startField + "_fk";
+              relationship.name = `fk_${startTableName}_${startFieldName}_${endTableName}`;
               relationship.startTableId = startTableId;
-              relationship.endTableId = endTableId;
-              relationship.endFieldId = endFieldId;
-              relationship.startFieldId = startFieldId;
+              relationship.endTableId = endTable.id;
+              relationship.endFieldId = endField.id;
+              relationship.startFieldId = startField.id;
               let updateConstraint = "No action";
               let deleteConstraint = "No action";
               d.reference_definition.on_action.forEach((c) => {
@@ -162,7 +164,7 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
               relationship.updateConstraint = updateConstraint;
               relationship.deleteConstraint = deleteConstraint;
 
-              if (table.fields[startFieldId].unique) {
+              if (startField.unique) {
                 relationship.cardinality = Cardinality.ONE_TO_ONE;
               } else {
                 relationship.cardinality = Cardinality.MANY_TO_ONE;
@@ -172,41 +174,36 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
             }
           }
         });
-        table.fields.forEach((f, j) => {
-          f.id = j;
-        });
         tables.push(table);
       } else if (e.keyword === "index") {
-        const index = {};
-        index.name = e.index;
-        index.unique = false;
-        if (e.index_type === "unique") index.unique = true;
-        index.fields = [];
-        e.index_columns.forEach((f) => index.fields.push(f.column));
+        const index = {
+          name: e.index,
+          unique: e.index_type === "unique",
+          fields: e.index_columns.map((f) => f.column),
+        };
 
-        let found = -1;
-        tables.forEach((t, i) => {
-          if (found !== -1) return;
-          if (t.name === e.table.table) {
-            t.indices.push(index);
-            found = i;
-          }
-        });
+        const table = tables.find((t) => t.name === e.table.table);
 
-        if (found !== -1) tables[found].indices.forEach((i, j) => (i.id = j));
+        if (table) {
+          table.indices.push(index);
+          table.indices.forEach((i, j) => {
+            i.id = j;
+          });
+        }
       }
     } else if (e.type === "alter") {
       e.expr.forEach((expr) => {
         if (
           expr.action === "add" &&
-          expr.create_definitions.constraint_type === "FOREIGN KEY"
+          expr.create_definitions.constraint_type.toLowerCase() ===
+            "foreign key"
         ) {
           const relationship = {};
-          const startTable = e.table[0].table;
-          const startField = expr.create_definitions.definition[0].column;
-          const endTable =
+          const startTableName = e.table[0].table;
+          const startFieldName = expr.create_definitions.definition[0].column;
+          const endTableName =
             expr.create_definitions.reference_definition.table[0].table;
-          const endField =
+          const endFieldName =
             expr.create_definitions.reference_definition.definition[0].column;
           let updateConstraint = "No action";
           let deleteConstraint = "No action";
@@ -226,31 +223,29 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
             },
           );
 
-          const startTableId = tables.findIndex((t) => t.name === startTable);
-          if (startTable === -1) return;
+          const startTable = tables.find((t) => t.name === startTableName);
+          if (!startTable) return;
 
-          const endTableId = tables.findIndex((t) => t.name === endTable);
-          if (endTableId === -1) return;
+          const endTable = tables.find((t) => t.name === endTableName);
+          if (!endTable) return;
 
-          const endFieldId = tables[endTableId].fields.findIndex(
-            (f) => f.name === endField,
+          const endField = endTable.fields.find((f) => f.name === endFieldName);
+          if (!endField) return;
+
+          const startField = startTable.fields.find(
+            (f) => f.name === startFieldName,
           );
-          if (endField === -1) return;
+          if (!startField) return;
 
-          const startFieldId = tables[startTableId].fields.findIndex(
-            (f) => f.name === startField,
-          );
-          if (startFieldId === -1) return;
-
-          relationship.name = startTable + "_" + startField + "_fk";
-          relationship.startTableId = startTableId;
-          relationship.startFieldId = startFieldId;
-          relationship.endTableId = endTableId;
-          relationship.endFieldId = endFieldId;
+          relationship.name = `fk_${startTableName}_${startFieldName}_${endTableName}`;
+          relationship.startTableId = startTable.id;
+          relationship.startFieldId = startField.id;
+          relationship.endTableId = endTable.id;
+          relationship.endFieldId = endField.id;
           relationship.updateConstraint = updateConstraint;
           relationship.deleteConstraint = deleteConstraint;
 
-          if (tables[startTableId].fields[startFieldId].unique) {
+          if (startField.unique) {
             relationship.cardinality = Cardinality.ONE_TO_ONE;
           } else {
             relationship.cardinality = Cardinality.MANY_TO_ONE;
@@ -266,16 +261,18 @@ export function fromMSSQL(ast, diagramDb = DB.GENERIC) {
 
   if (ast.go_next) {
     let x = { ...ast };
-    let done = Array.isArray(x.go_next);
+    let done = false;
     while (!done) {
       parseSingleStatement(x.ast);
+      done = Array.isArray(x.go_next) && x.go_next.length === 0;
       x = { ...x.go_next };
-      done = Array.isArray(x.go_next);
     }
   } else if (Array.isArray(ast)) {
     ast.forEach((e) => {
       parseSingleStatement(e);
     });
+  } else if (typeof ast === "object") {
+    parseSingleStatement(ast);
   }
 
   return { tables, relationships };
